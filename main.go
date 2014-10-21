@@ -1,6 +1,7 @@
 package main
 
 import "github.com/joushou/gocnc/gcode"
+
 import "github.com/joushou/gocnc/optimizer"
 
 import "io/ioutil"
@@ -15,8 +16,11 @@ func main() {
 	}
 	test := string(b)
 	doc := gcode.Parse(test)
-	doc = optimizer.FilemarkRemover(doc)
+	doc = optimizer.FillRemover(doc)
 	doc = optimizer.FeedratePatcher(doc)
-	fmt.Printf("%s\n", doc.ToString())
+	doc = optimizer.CodeSaver(doc)
+	doc = optimizer.LinearMoveSaver(doc)
+	s := doc.Export(-1)
+	fmt.Printf("%s\n", s)
 
 }

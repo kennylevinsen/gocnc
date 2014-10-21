@@ -1,91 +1,158 @@
 package gcode
 
 import "strconv"
+import "strings"
+import "errors"
 
-type GCode struct {
-	address  rune
-	command  float64
-	content  string
-	codetype string
+//
+// The Node types
+//
+
+type Node interface {
+	GetType() string
+	Export(precision int) string
 }
 
-func (g *GCode) Type() string {
-	return g.codetype
+type Word struct {
+	Address rune
+	Command float64
 }
 
-func (g *GCode) Address() rune {
-	return g.address
+type Comment struct {
+	Content string
+	EOL     bool
 }
 
-func (g *GCode) Command() float64 {
-	return g.command
+type Filemarker struct{}
+
+//
+// Methods
+//
+
+func (w *Word) GetType() string {
+	return "word"
 }
 
-func (g *GCode) Content() string {
-	return g.content
-}
+func (w *Word) Export(precision int) string {
+	x := strconv.FormatFloat(w.Command, 'f', precision, 64)
 
-func (c *GCode) ToString() string {
-	switch c.codetype {
-	case "word":
-		// TODO Strip unecessary decimal digits
-		return string(c.address) + strconv.FormatFloat(c.command, 'f', -1, 64)
-	case "filemarker":
-		return "%"
-	case "comment":
-		return "(" + c.content + ")"
+	// Hacky way to remove silly zeroes
+	if strings.IndexRune(x, '.') != -1 {
+		for x[len(x)-1] == '0' {
+			x = x[:len(x)-1]
+		}
+		if x[len(x)-1] == '.' {
+			x = x[:len(x)-1]
+		}
 	}
-	return ""
+
+	return string(w.Address) + x
 }
 
-type GBlock struct {
-	Codes       []GCode
-	blockDelete bool
+func (c *Comment) GetType() string {
+	return "comment"
 }
 
-func (s *GBlock) AppendCode(c GCode) {
-	s.Codes = append(s.Codes, c)
+func (c *Comment) Export(precision int) string {
+	if c.EOL {
+		return ";" + c.Content
+	} else {
+		return "(" + c.Content + ")"
+	}
 }
 
-func (s *GBlock) ToString() string {
+func (f *Filemarker) GetType() string {
+	return "filemarker"
+}
+
+func (f *Filemarker) Export(precision int) string {
+	return "%"
+}
+
+//
+// Block type
+//
+
+type Block struct {
+	Nodes       []Node
+	BlockDelete bool
+}
+
+func (s *Block) AppendNode(n Node) {
+	s.Nodes = append(s.Nodes, n)
+}
+
+func (s *Block) Export(precision int) string {
 	var k string
-	for _, c := range s.Codes {
-		k += c.ToString()
+	if s.BlockDelete {
+		return ""
+	}
+	for _, c := range s.Nodes {
+		k += c.Export(precision)
 	}
 	return k
 }
 
-func (s *GBlock) Length() int {
-	return len(s.Codes)
+func (s *Block) Length() int {
+	return len(s.Nodes)
 }
 
-type GDocument struct {
-	Blocks []GBlock
+//
+// Document type
+//
+
+type Document struct {
+	Blocks []Block
 }
 
-func (gdoc *GDocument) AppendBlock(b GBlock) {
-	gdoc.Blocks = append(gdoc.Blocks, b)
+func (doc *Document) AppendBlock(b Block) {
+	doc.Blocks = append(doc.Blocks, b)
 }
 
-func (gdoc *GDocument) ToString() string {
-	var s string
-	for _, b := range gdoc.Blocks {
-		s += b.ToString() + "\n"
+func (doc *Document) Export(precision int) string {
+	l := make([]string, len(doc.Blocks))
+	for idx, b := range doc.Blocks {
+		l[idx] = b.Export(precision)
 	}
-	return s
+	return strings.Join(l, "\n")
 }
 
-func (gdoc *GDocument) Length() int {
-	return len(gdoc.Blocks)
+func (doc *Document) ExportMaxLength(precision, maxLength int) (string, error) {
+	l := make([]string, len(doc.Blocks))
+	origPrecision := precision
+	for idx, b := range doc.Blocks {
+		for {
+			l[idx] = b.Export(precision)
+			if precision == -1 {
+				precision = maxLength
+			} else if precision == 0 {
+				return "", errors.New("Unable to reach maximum length")
+			} else if len(l[idx]) > maxLength {
+				precision--
+			} else {
+				precision = origPrecision
+				break
+			}
+		}
+	}
+	return strings.Join(l, "\n"), nil
 }
 
-func Parse(input string) *GDocument {
+func (doc *Document) ToString() string {
+	return doc.Export(-1)
+}
+
+func (doc *Document) Length() int {
+	return len(doc.Blocks)
+}
+
+func Parse(input string) *Document {
 
 	var (
-		document    GDocument
-		curBlock    GBlock = GBlock{}
-		state       int    = 0
-		lastNewline int    = 0
+		document    Document
+		curBlock    Block = Block{}
+		state       int   = 0
+		lastNewline int   = 0
 		buffer      string
 		address     rune
 	)
@@ -94,21 +161,25 @@ func Parse(input string) *GDocument {
 		switch c {
 		case '/':
 			if idx-lastNewline == 0 {
-				curBlock.blockDelete = true
+				curBlock.BlockDelete = true
 				lastNewline--
 			} else {
 				// TODO Error out!
 			}
 		case '%':
-			curBlock.AppendCode(GCode{0, 0, "", "filemarker"})
+			fm := Filemarker{}
+			curBlock.AppendNode(&fm)
 		case '(':
 			state = 1
 		case ';':
 			state = 2
 		case '\n':
 			document.AppendBlock(curBlock)
-			curBlock = GBlock{}
-			lastNewline = idx
+			curBlock = Block{}
+			lastNewline = idx + 1
+		case ' ':
+			// Ignore
+			return
 		default:
 			if c >= 97 && c <= 122 {
 				state = 3
@@ -126,12 +197,14 @@ func Parse(input string) *GDocument {
 		switch c {
 		case ')':
 			state = 0
-			curBlock.AppendCode(GCode{0, 0, buffer, "comment"})
+			cm := Comment{buffer, false}
+			curBlock.AppendNode(&cm)
 			buffer = ""
 		case '\n':
 			// TODO Error out!
 			state = 0
-			curBlock.AppendCode(GCode{0, 0, buffer, "comment"})
+			cm := Comment{buffer, true}
+			curBlock.AppendNode(&cm)
 			buffer = ""
 			parseNormal(c, idx)
 		default:
@@ -143,7 +216,8 @@ func Parse(input string) *GDocument {
 		switch c {
 		case '\n':
 			state = 0
-			curBlock.AppendCode(GCode{0, 0, buffer, "comment"})
+			cm := Comment{buffer, true}
+			curBlock.AppendNode(&cm)
 			buffer = ""
 			parseNormal(c, idx)
 		default:
@@ -157,7 +231,8 @@ func Parse(input string) *GDocument {
 		} else {
 			state = 0
 			f, _ := strconv.ParseFloat(string(buffer), 64)
-			curBlock.AppendCode(GCode{address, f, "", "word"})
+			w := Word{address, f}
+			curBlock.AppendNode(&w)
 			buffer = ""
 			parseNormal(c, idx)
 		}

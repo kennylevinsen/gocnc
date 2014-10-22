@@ -2,7 +2,7 @@ package main
 
 import "github.com/joushou/gocnc/gcode"
 
-import "github.com/joushou/gocnc/optimizer"
+import "github.com/joushou/gocnc/vm"
 
 import "io/ioutil"
 import "flag"
@@ -16,11 +16,10 @@ func main() {
 	}
 	test := string(b)
 	doc := gcode.Parse(test)
-	doc = optimizer.FillRemover(doc)
-	doc = optimizer.FeedratePatcher(doc)
-	doc = optimizer.CodeSaver(doc)
-	doc = optimizer.LinearMoveSaver(doc)
-	s := doc.Export(-1)
-	fmt.Printf("%s\n", s)
+	var m vm.Machine
+	m.Process(doc)
+	m.Dump()
+	//s := doc.Export(-1)
+	//fmt.Printf("%s\n", s)
 
 }

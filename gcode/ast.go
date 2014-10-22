@@ -226,7 +226,7 @@ func Parse(input string) *Document {
 	}
 
 	parseWord := func(c rune, idx int) {
-		if (c >= 48 && c <= 57) || c == 46 {
+		if (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 43 {
 			buffer += string(c)
 		} else {
 			state = 0

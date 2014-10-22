@@ -17,8 +17,11 @@ func main() {
 	test := string(b)
 	doc := gcode.Parse(test)
 	var m vm.Machine
+	m.Init()
 	m.Process(doc)
-	m.Dump()
+	m.OptimizeMoves()
+	m.OptimizeLifts()
+	fmt.Printf(m.Export(4))
 	//s := doc.Export(-1)
 	//fmt.Printf("%s\n", s)
 

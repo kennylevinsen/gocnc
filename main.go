@@ -21,6 +21,7 @@ func main() {
 	m.Process(doc)
 	m.OptimizeMoves()
 	m.OptimizeLifts()
+	m.OptimizeDrills()
 	fmt.Printf(m.Export(4))
 	//s := doc.Export(-1)
 	//fmt.Printf("%s\n", s)

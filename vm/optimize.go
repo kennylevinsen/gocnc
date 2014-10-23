@@ -2,6 +2,64 @@ package vm
 
 import "math"
 
+//
+// Detects a previous drill, and uses rapid move to the previous known depth
+//
+func (vm *Machine) OptimizeDrills() {
+	var (
+		lastx, lasty, lastz float64
+		npos                []Position = make([]Position, 0)
+	)
+
+	// TODO Reduce search to only drill moves
+	fastDrill := func(index int, pos Position) (Position, Position, bool) {
+		var depth float64
+		var found bool
+		for idx, m := range vm.posStack {
+			if idx == index {
+				break
+			}
+			if m.x == pos.x && m.y == pos.y {
+				if m.z < depth {
+					depth = m.z
+					found = true
+				}
+			}
+		}
+
+		if found {
+			if pos.z >= depth { // We have drilled all of it, so just modify old object
+				pos.state.moveMode = rapidMoveMode
+				return pos, pos, false
+			} else {
+				p := pos
+				p.z = depth
+				p.state.moveMode = rapidMoveMode
+				return p, pos, true
+			}
+		} else {
+			return pos, pos, false
+		}
+	}
+
+	for idx, m := range vm.posStack {
+		if m.x == lastx && m.y == lasty && m.z < lastz && m.state.moveMode == linearMoveMode {
+			posn, poso, shouldinsert := fastDrill(idx, m)
+			if shouldinsert {
+				npos = append(npos, posn)
+			}
+			npos = append(npos, poso)
+		} else {
+			npos = append(npos, m)
+		}
+		lastx, lasty, lastz = m.x, m.y, m.z
+	}
+	vm.posStack = npos
+}
+
+//
+// Uses rapid move for all Z-up only moves
+//
 func (vm *Machine) OptimizeLifts() {
 	var lastx, lasty, lastz float64
 	for idx, m := range vm.posStack {
@@ -13,6 +71,9 @@ func (vm *Machine) OptimizeLifts() {
 	}
 }
 
+//
+// Kills redundant partial moves
+//
 func (vm *Machine) OptimizeMoves() {
 	var (
 		xstate, ystate, zstate       float64

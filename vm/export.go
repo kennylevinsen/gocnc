@@ -1,51 +1,74 @@
 package vm
 
-import "strconv"
-import "strings"
+import "github.com/joushou/gocnc/gcode"
 import "fmt"
 
 //
 // Export machine code
 //
 
-func (vm *Machine) Export(precision int) string {
-	blocks := make([]string, 0)
-	blocks = append(blocks, "(Exported by gocnc/vm)")
-	blocks = append(blocks, "G17G21G40G90G94")
+func (vm *Machine) Export() *gcode.Document {
+	var (
+		lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ         float64
+		spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
+		lastMoveMode, lastMovePlane                                 float64
+		doc                                                         gcode.Document
+	)
 
-	var lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ float64
-	var spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
-	lastMoveMode := ""
+	shortBlock := func(n gcode.Node) {
+		var block gcode.Block
+		block.AppendNode(n)
+		doc.AppendBlock(block)
+	}
+
+	shortBlock(&gcode.Comment{"Exported by gocnc/vm", false})
+
+	var headerBlock gcode.Block
+	headerBlock.AppendNode(&gcode.Word{'G', 21})
+	//	headerBlock.AppendNode(&gcode.Word{'G', 40})
+	headerBlock.AppendNode(&gcode.Word{'G', 90})
+	headerBlock.AppendNode(&gcode.Word{'G', 94})
+	doc.AppendBlock(headerBlock)
 
 	for _, pos := range vm.posStack {
 		s := pos.state
-		var x, moveMode string
+		var moveMode, movePlane float64
 
 		// fetch move mode
 		switch s.moveMode {
-		case initialMode:
+		case moveModeInitial:
 			continue
-		case rapidMoveMode:
-			moveMode = "G0"
-		case linearMoveMode:
-			moveMode = "G1"
-		case cwArcMode:
-			moveMode = "G2"
-		case ccwArcMode:
-			moveMode = "G3"
+		case moveModeRapid:
+			moveMode = 0
+		case moveModeLinear:
+			moveMode = 1
+		case moveModeCWArc:
+			moveMode = 2
+		case moveModeCCWArc:
+			moveMode = 3
+		}
+
+		// fetch move plane
+		switch s.movePlane {
+		case planeXY:
+			movePlane = 17
+		case planeXZ:
+			movePlane = 18
+		case planeYZ:
+			movePlane = 19
 		}
 
 		// handle spindle
 		if s.spindleEnabled != spindleEnabled || s.spindleClockwise != spindleClockwise {
 			if s.spindleEnabled && s.spindleClockwise {
-				blocks = append(blocks, "M3")
+				shortBlock(&gcode.Word{'M', 3})
 			} else if s.spindleEnabled && !s.spindleClockwise {
-				blocks = append(blocks, "M4")
+				shortBlock(&gcode.Word{'M', 4})
 			} else if !s.spindleEnabled {
-				blocks = append(blocks, "M5")
+				shortBlock(&gcode.Word{'M', 5})
 			}
 			spindleEnabled, spindleClockwise = s.spindleEnabled, s.spindleClockwise
-			lastMoveMode = "" // M-codes clear stuff...
+			lastMoveMode = -1 // M-codes clear stuff...
 		}
 
 		// handle coolant
@@ -54,72 +77,78 @@ func (vm *Machine) Export(precision int) string {
 			if (floodCoolant == true && s.floodCoolant == false) ||
 				(mistCoolant == true && s.mistCoolant == false) {
 				// We can only disable both coolants simultaneously, so kill it and reenable one if needed
-				blocks = append(blocks, "M9")
+				shortBlock(&gcode.Word{'M', 9})
 			}
 			if s.floodCoolant {
-				blocks = append(blocks, "M8")
+				shortBlock(&gcode.Word{'M', 8})
 			} else if s.mistCoolant {
-				blocks = append(blocks, "M7")
+				shortBlock(&gcode.Word{'M', 7})
 			}
-			lastMoveMode = "" // M-codes clear stuff...
+			lastMoveMode = -1 // M-codes clear stuff...
 		}
 
-		// handle feedrate
-		if s.moveMode != rapidMoveMode {
+		// handle feedrate and spindle speed
+		if s.moveMode != moveModeRapid {
 			if s.feedrate != lastFeedrate {
-				blocks = append(blocks, "F"+strconv.FormatFloat(s.feedrate, 'f', precision, 64))
+				shortBlock(&gcode.Word{'F', s.feedrate})
 				lastFeedrate = s.feedrate
 			}
+			if s.spindleSpeed != lastSpindleSpeed {
+				shortBlock(&gcode.Word{'S', s.spindleSpeed})
+				lastSpindleSpeed = s.spindleSpeed
+			}
 		}
 
-		// handle spindle speed
-		if s.spindleSpeed != lastSpindleSpeed {
-			blocks = append(blocks, "S"+strconv.FormatFloat(s.spindleSpeed, 'f', precision, 64))
-			lastSpindleSpeed = s.spindleSpeed
+		var moveBlock gcode.Block
+
+		// handle move plane
+		if movePlane != lastMovePlane {
+			moveBlock.AppendNode(&gcode.Word{'G', movePlane})
+			lastMovePlane = movePlane
 		}
 
 		// handle move mode
-		if s.moveMode == cwArcMode || s.moveMode == ccwArcMode || moveMode != lastMoveMode {
-			x += moveMode
-			//blocks = append(blocks, moveMode)
+		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc || moveMode != lastMoveMode {
+			moveBlock.AppendNode(&gcode.Word{'G', moveMode})
 			lastMoveMode = moveMode
 		}
 
 		// handle move
 		if pos.x != lastX {
-			x += "X" + strconv.FormatFloat(pos.x, 'f', precision, 64)
+			moveBlock.AppendNode(&gcode.Word{'X', pos.x})
 			lastX = pos.x
 		}
 		if pos.y != lastY {
-			x += "Y" + strconv.FormatFloat(pos.y, 'f', precision, 64)
+			moveBlock.AppendNode(&gcode.Word{'Y', pos.y})
 			lastY = pos.y
 		}
 		if pos.z != lastZ {
-			x += "Z" + strconv.FormatFloat(pos.z, 'f', precision, 64)
+			moveBlock.AppendNode(&gcode.Word{'Z', pos.z})
 			lastZ = pos.z
 		}
 
-		if s.moveMode == cwArcMode || s.moveMode == ccwArcMode {
+		// handle arc
+		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc {
 			if pos.i != 0 {
-				x += "I" + strconv.FormatFloat(pos.i, 'f', precision, 64)
+				moveBlock.AppendNode(&gcode.Word{'I', pos.i})
 			}
 			if pos.j != 0 {
-				x += "J" + strconv.FormatFloat(pos.j, 'f', precision, 64)
+				moveBlock.AppendNode(&gcode.Word{'J', pos.j})
 			}
 			if pos.k != 0 {
-				x += "K" + strconv.FormatFloat(pos.k, 'f', precision, 64)
+				moveBlock.AppendNode(&gcode.Word{'K', pos.k})
 			}
 			if pos.rot != 1 {
-				x += "P" + strconv.FormatInt(pos.rot, 10)
+				moveBlock.AppendNode(&gcode.Word{'P', float64(pos.rot)})
 			}
 		}
 
 		// put on slice
-		if len(x) > 0 {
-			blocks = append(blocks, x)
+		if len(moveBlock.Nodes) > 0 {
+			doc.AppendBlock(moveBlock)
 		}
 	}
-	return strings.Join(blocks, "\n")
+	return &doc
 }
 
 //
@@ -128,15 +157,15 @@ func (vm *Machine) Export(precision int) string {
 func (vm *Machine) Dump() {
 	for _, m := range vm.posStack {
 		switch m.state.moveMode {
-		case initialMode:
+		case moveModeInitial:
 			fmt.Printf("initial pos, ")
-		case rapidMoveMode:
+		case moveModeRapid:
 			fmt.Printf("rapid move, ")
-		case linearMoveMode:
+		case moveModeLinear:
 			fmt.Printf("linear move, ")
-		case cwArcMode:
+		case moveModeCWArc:
 			fmt.Printf("clockwise arc, ")
-		case ccwArcMode:
+		case moveModeCCWArc:
 			fmt.Printf("counterclockwise arc, ")
 		}
 

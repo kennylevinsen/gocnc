@@ -1,12 +1,15 @@
 package main
 
 import "github.com/joushou/gocnc/gcode"
-
 import "github.com/joushou/gocnc/vm"
+import "github.com/joushou/gocnc/streaming"
+import "github.com/cheggaaa/pb"
 
 import "io/ioutil"
 import "flag"
 import "fmt"
+import "os"
+import "os/signal"
 
 func main() {
 	flag.Parse()
@@ -22,8 +25,27 @@ func main() {
 	m.OptimizeMoves()
 	m.OptimizeLifts()
 	m.OptimizeDrills()
-	fmt.Printf(m.Export(4))
-	//s := doc.Export(-1)
-	//fmt.Printf("%s\n", s)
+	doc = m.Export()
 
+	var s streaming.Streamer
+
+	s.Connect(flag.Args()[1])
+
+	pBar := pb.StartNew(doc.Length())
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			fmt.Printf("\n<C-c> Stopping\n")
+			s.Stop()
+		}
+	}()
+
+	progress := make(chan int, 0)
+	go s.Send(doc, 4, progress)
+	for _ = range progress {
+		pBar.Increment()
+	}
+	pBar.Finish()
 }

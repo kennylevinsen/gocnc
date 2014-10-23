@@ -29,12 +29,12 @@ func (vm *Machine) OptimizeDrills() {
 
 		if found {
 			if pos.z >= depth { // We have drilled all of it, so just modify old object
-				pos.state.moveMode = rapidMoveMode
+				pos.state.moveMode = moveModeRapid
 				return pos, pos, false
 			} else {
 				p := pos
 				p.z = depth
-				p.state.moveMode = rapidMoveMode
+				p.state.moveMode = moveModeRapid
 				return p, pos, true
 			}
 		} else {
@@ -43,7 +43,7 @@ func (vm *Machine) OptimizeDrills() {
 	}
 
 	for idx, m := range vm.posStack {
-		if m.x == lastx && m.y == lasty && m.z < lastz && m.state.moveMode == linearMoveMode {
+		if m.x == lastx && m.y == lasty && m.z < lastz && m.state.moveMode == moveModeLinear {
 			posn, poso, shouldinsert := fastDrill(idx, m)
 			if shouldinsert {
 				npos = append(npos, posn)
@@ -65,7 +65,7 @@ func (vm *Machine) OptimizeLifts() {
 	for idx, m := range vm.posStack {
 		if m.x == lastx && m.y == lasty && m.z > lastz {
 			// We got a lift! Let's make it faster, shall we?
-			vm.posStack[idx].state.moveMode = rapidMoveMode
+			vm.posStack[idx].state.moveMode = moveModeRapid
 		}
 		lastx, lasty, lastz = m.x, m.y, m.z
 	}
@@ -86,7 +86,7 @@ func (vm *Machine) OptimizeMoves() {
 		dx, dy, dz := m.x-xstate, m.y-ystate, m.z-zstate
 		xstate, ystate, zstate = m.x, m.y, m.z
 
-		if m.state.moveMode != rapidMoveMode && m.state.moveMode != linearMoveMode {
+		if m.state.moveMode != moveModeRapid && m.state.moveMode != moveModeLinear {
 			// I'm not mentally ready for arc optimization yet...
 			npos = append(npos, m)
 			continue

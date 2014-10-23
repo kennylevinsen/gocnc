@@ -39,17 +39,24 @@ type Statement map[rune]float64
 //
 
 const (
-	initialMode    = iota
-	rapidMoveMode  = iota
-	linearMoveMode = iota
-	cwArcMode      = iota
-	ccwArcMode     = iota
+	moveModeInitial = iota
+	moveModeRapid   = iota
+	moveModeLinear  = iota
+	moveModeCWArc   = iota
+	moveModeCCWArc  = iota
+)
+
+const (
+	planeXY = iota
+	planeXZ = iota
+	planeYZ = iota
 )
 
 type State struct {
 	feedrate         float64
 	spindleSpeed     float64
 	moveMode         int
+	movePlane        int
 	spindleEnabled   bool
 	spindleClockwise bool
 	floodCoolant     bool
@@ -60,6 +67,7 @@ func (s *State) Equal(o *State) bool {
 	return (s.feedrate == o.feedrate &&
 		s.spindleSpeed == o.spindleSpeed &&
 		s.moveMode == o.moveMode &&
+		s.movePlane == o.movePlane &&
 		s.spindleEnabled == o.spindleEnabled &&
 		s.spindleClockwise == o.spindleClockwise &&
 		s.floodCoolant == o.floodCoolant &&
@@ -142,16 +150,22 @@ func (vm *Machine) run(stmt Statement) {
 		switch g {
 		case 0:
 			vm.mode = "positioning"
-			vm.state.moveMode = rapidMoveMode
+			vm.state.moveMode = moveModeRapid
 		case 1:
 			vm.mode = "positioning"
-			vm.state.moveMode = linearMoveMode
+			vm.state.moveMode = moveModeLinear
 		case 2:
 			vm.mode = "positioning"
-			vm.state.moveMode = cwArcMode
+			vm.state.moveMode = moveModeCWArc
 		case 3:
 			vm.mode = "positioning"
-			vm.state.moveMode = ccwArcMode
+			vm.state.moveMode = moveModeCCWArc
+		case 17:
+			vm.state.movePlane = planeXY
+		case 18:
+			vm.state.movePlane = planeXZ
+		case 19:
+			vm.state.movePlane = planeYZ
 		case 20:
 			vm.metric = false
 		case 21:

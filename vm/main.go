@@ -2,6 +2,36 @@ package vm
 
 import "github.com/joushou/gocnc/gcode"
 
+//
+// The CNC interpreter/"vm"
+//
+// It currently supports:
+//
+//   G00 - rapid move
+//   G01 - linear move
+//   G02 - cw arc
+//   G03 - ccw arc
+//   G20 - imperial mode
+//   G21 - metric mode
+//   G80 - cancel mode (?)
+//   G90 - absolute
+//   G91 - relative
+//
+//   M02 - end of program
+//   M03 - spindle enable clockwise
+//   M04 - spindle enable counterclockwise
+//   M05 - spindle disable
+//   M07 - mist coolant enable
+//   M08 - flood coolant enable
+//   M09 - coolant disable
+//   M30 - end of program
+//
+//   F - feedrate
+//   S - spindle speed
+//   P - parameter
+//   X, Y, Z - cartesian movement
+//   I, J, K - arc center definition
+
 type Statement map[rune]float64
 
 //

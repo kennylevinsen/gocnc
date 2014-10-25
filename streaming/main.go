@@ -4,6 +4,7 @@ import "io"
 import "github.com/tarm/goserial"
 import "github.com/joushou/gocnc/gcode"
 import "time"
+import "errors"
 
 type Streamer struct {
 	serialPort io.ReadWriteCloser
@@ -67,46 +68,55 @@ func waitFor(s io.ReadWriteCloser, w string, max int) bool {
 	}
 }
 
-func (s *Streamer) Connect(name string) {
+func (s *Streamer) Connect(name string) error {
 	c := &serial.Config{Name: name, Baud: 115200}
-	var err error
-	s.serialPort, err = serial.OpenPort(c)
-	if err != nil {
-		panic("Unable to connect to CNC!")
-	}
+	retry := 0
+	for {
+		var err error
+		s.serialPort, err = serial.OpenPort(c)
+		if err != nil {
+			return errors.New("Unable to connect to CNC!")
+		}
 
-	if !waitFor(s.serialPort, "\r\n", 2) {
-		panic("Could not detect initialized GRBL!")
-	} else if !waitFor(s.serialPort, "\n", -1) {
-		panic("Could not detect initialized GRBL!")
+		if waitFor(s.serialPort, "\r\n", 2) && waitFor(s.serialPort, "\n", -1) {
+			break
+		} else if retry > 3 {
+			return errors.New("Could not detect initialized GRBL")
+		} else {
+			s.serialPort.Close()
+			retry++
+			time.Sleep(1 * time.Second)
+		}
 	}
 
 	s.resultChan = make(chan string, 0)
+	return nil
 }
 
 func (s *Streamer) Stop() {
-	_, _ = s.serialPort.Write([]byte("!\n"))
+	_, _ = s.serialPort.Write([]byte("\n!\n!\n"))
 	s.serialPort.Close()
 	close(s.resultChan)
 }
 
-func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) {
+func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) error {
 	go serialReader(s.serialPort, s.resultChan)
 	time.Sleep(1 * time.Second)
 	for idx, block := range doc.Blocks {
 		e := []byte(block.Export(maxPrecision) + "\n")
 		n, err := s.serialPort.Write(e)
 		if err != nil {
-			panic("Unable to write to CNC!")
+			return err
 		}
 		if n != len(e) {
-			panic("Unable to write all data!")
+			return errors.New("Unable to write all data!")
 		}
 		res := <-s.resultChan
 		if res != "ok" {
-			panic("CNC said: " + res)
+			return errors.New("Erroneous CNC reply: " + res)
 		}
 		progress <- idx
 	}
 	close(progress)
+	return nil
 }

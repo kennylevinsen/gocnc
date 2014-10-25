@@ -3,22 +3,27 @@ package vm
 import "math"
 
 //
+// Ideas for other optimization steps:
+//   Move grouping - Group moves based on Z0, Zdepth lifts, to finalize
+//      section, instead of constantly moving back and forth
+//   Vector-angle removal - Combine moves where the move vector changes
+//      less than a certain minimum angle
+//
+
+//
 // Detects a previous drill, and uses rapid move to the previous known depth
 //
 func (vm *Machine) OptimizeDrills() {
 	var (
 		lastx, lasty, lastz float64
 		npos                []Position = make([]Position, 0)
+		drillStack          []Position = make([]Position, 0)
 	)
 
-	// TODO Reduce search to only drill moves
-	fastDrill := func(index int, pos Position) (Position, Position, bool) {
+	fastDrill := func(pos Position) (Position, Position, bool) {
 		var depth float64
 		var found bool
-		for idx, m := range vm.posStack {
-			if idx == index {
-				break
-			}
+		for _, m := range drillStack {
 			if m.x == pos.x && m.y == pos.y {
 				if m.z < depth {
 					depth = m.z
@@ -27,11 +32,13 @@ func (vm *Machine) OptimizeDrills() {
 			}
 		}
 
+		drillStack = append(drillStack, pos)
+
 		if found {
-			if pos.z >= depth { // We have drilled all of it, so just modify old object
+			if pos.z >= depth { // We have drilled all of it, so just rapid all the way
 				pos.state.moveMode = moveModeRapid
 				return pos, pos, false
-			} else {
+			} else { // Can only rapid some of the way
 				p := pos
 				p.z = depth
 				p.state.moveMode = moveModeRapid
@@ -42,9 +49,9 @@ func (vm *Machine) OptimizeDrills() {
 		}
 	}
 
-	for idx, m := range vm.posStack {
+	for _, m := range vm.posStack {
 		if m.x == lastx && m.y == lasty && m.z < lastz && m.state.moveMode == moveModeLinear {
-			posn, poso, shouldinsert := fastDrill(idx, m)
+			posn, poso, shouldinsert := fastDrill(m)
 			if shouldinsert {
 				npos = append(npos, posn)
 			}

@@ -7,9 +7,10 @@ import "time"
 
 type Streamer struct {
 	serialPort io.ReadWriteCloser
+	resultChan chan string
 }
 
-func (s *Streamer) serialReader(res chan string) {
+func serialReader(s io.ReadWriteCloser, res chan string) {
 	buffer := ""
 	parseResult := func(b byte) {
 		switch b {
@@ -30,14 +31,38 @@ func (s *Streamer) serialReader(res chan string) {
 		}
 	}
 
+	b := make([]byte, 1)
 	for {
-		b := make([]byte, 1)
-		n, err := s.serialPort.Read(b)
+		n, err := s.Read(b)
 		if n == 1 {
 			parseResult(b[0])
 		}
 		if err != nil {
 			return
+		}
+	}
+}
+
+func waitFor(s io.ReadWriteCloser, w string, max int) bool {
+	x := ""
+	bytes := 0
+	b := make([]byte, 1)
+	for {
+		n, err := s.Read(b)
+		if n == 1 {
+			x += string(b[0])
+			bytes += 1
+			if len(x) > len(w) {
+				x = x[len(x)-len(w):]
+			}
+			if x == w {
+				return true
+			} else if max != -1 && bytes > max {
+				return false
+			}
+		}
+		if err != nil {
+			return false
 		}
 	}
 }
@@ -50,39 +75,23 @@ func (s *Streamer) Connect(name string) {
 		panic("Unable to connect to CNC!")
 	}
 
-	buf := ""
-	b := make([]byte, 1)
-	_, err = s.serialPort.Read(b)
-	if err != nil {
-		panic("Unable!")
+	if !waitFor(s.serialPort, "\r\n", 2) {
+		panic("Could not detect initialized GRBL!")
+	} else if !waitFor(s.serialPort, "\n", -1) {
+		panic("Could not detect initialized GRBL!")
 	}
-	buf += string(b)
-	_, err = s.serialPort.Read(b)
-	if err != nil {
-		panic("Unable!!")
-	}
-	buf += string(b)
-	if buf != "\r\n" {
-		panic("Unable!!!")
-	}
-	for {
-		_, err = s.serialPort.Read(b)
-		if err != nil {
-			panic("Unable!!!!")
-		}
-		if string(b) == "\n" {
-			break
-		}
-	}
+
+	s.resultChan = make(chan string, 0)
 }
 
 func (s *Streamer) Stop() {
 	_, _ = s.serialPort.Write([]byte("!\n"))
+	s.serialPort.Close()
+	close(s.resultChan)
 }
 
 func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) {
-	ok := make(chan string, 0)
-	go s.serialReader(ok)
+	go serialReader(s.serialPort, s.resultChan)
 	time.Sleep(1 * time.Second)
 	for idx, block := range doc.Blocks {
 		e := []byte(block.Export(maxPrecision) + "\n")
@@ -93,7 +102,7 @@ func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int
 		if n != len(e) {
 			panic("Unable to write all data!")
 		}
-		res := <-ok
+		res := <-s.resultChan
 		if res != "ok" {
 			panic("CNC said: " + res)
 		}

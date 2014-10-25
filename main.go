@@ -32,17 +32,20 @@ func main() {
 	s.Connect(flag.Args()[1])
 
 	pBar := pb.StartNew(doc.Length())
+	pBar.Format("[=> ]")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
+	progress := make(chan int, 0)
 	go func() {
 		for _ = range c {
 			fmt.Printf("\n<C-c> Stopping\n")
+			close(progress)
 			s.Stop()
+			os.Exit(1)
 		}
 	}()
 
-	progress := make(chan int, 0)
 	go s.Send(doc, 4, progress)
 	for _ = range progress {
 		pBar.Increment()

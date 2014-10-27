@@ -14,14 +14,16 @@ import "net/http"
 import _ "net/http/pprof"
 
 var (
-	device     = flag.String("device", "", "Serial device for CNC control")
-	inputFile  = flag.String("input", "", "NC file to process")
-	outputFile = flag.String("output", "", "Location to dump processed data")
-	optVector  = flag.Bool("optvector", true, "Perform vectorized optimization")
-	optLifts   = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
-	optDrills  = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
-	precision  = flag.Int("precision", 5, "Precision to use for exported gcode")
-	feedLimit  = flag.Float64("feedlimit", -1, "Maximum feedrate")
+	device       = flag.String("device", "", "Serial device for CNC control")
+	inputFile    = flag.String("input", "", "NC file to process")
+	outputFile   = flag.String("output", "", "Location to dump processed data")
+	optVector    = flag.Bool("optvector", true, "Perform vectorized optimization")
+	optLifts     = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
+	optDrills    = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
+	precision    = flag.Int("precision", 5, "Precision to use for exported gcode")
+	feedLimit    = flag.Float64("feedlimit", -1, "Maximum feedrate")
+	safetyHeight = flag.Float64("safetyheight", -1, "Enforce safety height")
+	ensureReturn = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
 )
 
 func init() {
@@ -34,18 +36,18 @@ func init() {
 
 func main() {
 	if *inputFile == "" {
-		fmt.Printf("No file provided\n")
+		fmt.Printf("Error: No file provided\n")
 		os.Exit(1)
 	}
 
 	if *outputFile == "" && *device == "" {
-		fmt.Printf("Requires either device or output file\n")
+		fmt.Printf("Error: Requires either device or output file\n")
 		os.Exit(2)
 	}
 
 	fhandle, err := ioutil.ReadFile(*inputFile)
 	if err != nil {
-		fmt.Printf("Could not open file: %s\n", err)
+		fmt.Printf("Error: Could not open file: %s\n", err)
 		os.Exit(3)
 	}
 
@@ -72,21 +74,30 @@ func main() {
 	if *feedLimit > 0 {
 		m.LimitFeedrate(*feedLimit)
 	}
-
+	if *safetyHeight > 0 {
+		err := m.SetSafetyHeight(*safetyHeight)
+		if err != nil {
+			fmt.Printf("Error: %s\n", err)
+			os.Exit(4)
+		}
+	}
+	if *ensureReturn {
+		m.Return()
+	}
 	output := m.Export()
 
 	if *outputFile != "" {
 		if err := ioutil.WriteFile(*outputFile, []byte(output.Export(*precision)), 0644); err != nil {
-			fmt.Printf("Could not write to file: %s\n", err)
-			os.Exit(4)
+			fmt.Printf("Error: Could not write to file: %s\n", err)
+			os.Exit(5)
 		}
 	}
 
 	if *device != "" {
 		var s streaming.Streamer
 		if err := s.Connect(*device); err != nil {
-			fmt.Printf("Unable to connect to device: %s\n", err)
-			os.Exit(5)
+			fmt.Printf("Error: Unable to connect to device: %s\n", err)
+			os.Exit(6)
 		}
 
 		pBar := pb.StartNew(output.Length())
@@ -102,7 +113,7 @@ func main() {
 					fmt.Printf("\nStopping...\n")
 					close(progress)
 					s.Stop()
-					os.Exit(6)
+					os.Exit(7)
 				}
 			}
 		}()
@@ -113,7 +124,7 @@ func main() {
 				fmt.Printf("\nSend failed: %s\n", err)
 				close(progress)
 				s.Stop()
-				os.Exit(7)
+				os.Exit(8)
 			}
 		}()
 		for _ = range progress {

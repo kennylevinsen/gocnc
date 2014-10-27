@@ -1,6 +1,8 @@
 package vm
 
 import "math"
+import "errors"
+import "strconv"
 
 //
 // Ideas for other optimization steps:
@@ -125,5 +127,82 @@ func (vm *Machine) LimitFeedrate(feed float64) {
 		if m.state.feedrate > feed {
 			vm.posStack[idx].state.feedrate = feed
 		}
+	}
+}
+
+//
+// Set safety-height
+//
+func (vm *Machine) SetSafetyHeight(height float64) error {
+	// Ensure we detected the highest point in the script - we don't want any collisions
+
+	var maxz, nextz float64
+	for _, m := range vm.posStack {
+		if m.z > maxz {
+			nextz = maxz
+			maxz = m.z
+		}
+		if m.z > nextz && m.z < maxz {
+			nextz = m.z
+		}
+	}
+
+	if height <= nextz {
+		return errors.New("New safety height collides with lower feed height of " + strconv.FormatFloat(nextz, 'f', -1, 64))
+	}
+
+	// Apply the changes
+	var lastx, lasty float64
+	for idx, m := range vm.posStack {
+		if lastx == m.x && lasty == m.y && m.z == maxz {
+			vm.posStack[idx].z = height
+		}
+		lastx, lasty = m.x, m.y
+	}
+	return nil
+}
+
+//
+// Ensure return to X0 Y0 Z0
+//
+func (vm *Machine) Return() {
+	var maxz float64
+	for _, m := range vm.posStack {
+		if m.z > maxz {
+			maxz = m.z
+		}
+	}
+
+	lastPos := vm.posStack[len(vm.posStack)-1]
+	if lastPos.x == 0 && lastPos.y == 0 && lastPos.z == 0 {
+		return
+	} else if lastPos.x == 0 && lastPos.y == 0 && lastPos.z != 0 {
+		lastPos.z = 0
+		lastPos.state.moveMode = moveModeRapid
+		vm.posStack = append(vm.posStack, lastPos)
+		return
+	} else if lastPos.z == maxz {
+		move1 := lastPos
+		move1.x = 0
+		move1.y = 0
+		move1.state.moveMode = moveModeRapid
+		move2 := move1
+		move2.z = 0
+		vm.posStack = append(vm.posStack, move1)
+		vm.posStack = append(vm.posStack, move2)
+		return
+	} else {
+		move1 := lastPos
+		move1.z = maxz
+		move1.state.moveMode = moveModeRapid
+		move2 := move1
+		move2.x = 0
+		move2.y = 0
+		move3 := move2
+		move3.z = 0
+		vm.posStack = append(vm.posStack, move1)
+		vm.posStack = append(vm.posStack, move2)
+		vm.posStack = append(vm.posStack, move3)
+		return
 	}
 }

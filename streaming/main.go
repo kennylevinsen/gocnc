@@ -1,122 +1,99 @@
 package streaming
 
 import "io"
+import "bufio"
 import "github.com/tarm/goserial"
 import "github.com/joushou/gocnc/gcode"
-import "time"
 import "errors"
+import "fmt"
+import "time"
+
+type Result struct {
+	level   string
+	message string
+}
 
 type Streamer struct {
 	serialPort io.ReadWriteCloser
-	resultChan chan string
+	reader     *bufio.Reader
+	writer     *bufio.Writer
 }
 
-func serialReader(s io.ReadWriteCloser, res chan string) {
-	buffer := ""
-	parseResult := func(b byte) {
-		switch b {
-		case '\r':
-			return
-		case '\n':
-			s := buffer
-			buffer = ""
-			if s == "ok" {
-				res <- "ok"
-			} else if len(s) >= 5 && s[:5] == "error" {
-				res <- "error"
-			} else if len(s) >= 5 && s[:5] == "ALARM" {
-				res <- "error"
-			}
-		default:
-			buffer += string(b)
-		}
+func serialReader(reader *bufio.Reader) Result {
+	c, err := reader.ReadBytes('\n')
+	if err != nil {
+		return Result{"serial-error", fmt.Sprintf("%s", err)}
 	}
-
-	b := make([]byte, 1)
-	for {
-		n, err := s.Read(b)
-		if n == 1 {
-			parseResult(b[0])
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
-func waitFor(s io.ReadWriteCloser, w string, max int) bool {
-	x := ""
-	bytes := 0
-	b := make([]byte, 1)
-	for {
-		n, err := s.Read(b)
-		if n == 1 {
-			x += string(b[0])
-			bytes += 1
-			if len(x) > len(w) {
-				x = x[len(x)-len(w):]
-			}
-			if x == w {
-				return true
-			} else if max != -1 && bytes > max {
-				return false
-			}
-		}
-		if err != nil {
-			return false
-		}
+	b := string(c)
+	if b == "ok\r\n" {
+		return Result{"ok", ""}
+	} else if len(b) >= 5 && b[:5] == "error" {
+		return Result{"error", b[6 : len(b)-1]}
+	} else if len(b) >= 5 && b[:5] == "alarm" {
+		return Result{"alarm", b[6 : len(b)-1]}
+	} else {
+		return Result{"info", b[:len(b)-1]}
 	}
 }
 
 func (s *Streamer) Connect(name string) error {
 	c := &serial.Config{Name: name, Baud: 115200}
-	retry := 0
+	var err error
+	s.serialPort, err = serial.OpenPort(c)
+	if err != nil {
+		return errors.New("Unable to connect to CNC!")
+	}
+
+	s.reader = bufio.NewReader(s.serialPort)
+	s.writer = bufio.NewWriter(s.serialPort)
+
 	for {
-		var err error
-		s.serialPort, err = serial.OpenPort(c)
-		if err != nil {
-			return errors.New("Unable to connect to CNC!")
+		c, err := s.reader.ReadBytes('\n')
+		m := string(c)
+		if len(m) == 26 && m[:5] == "Grbl " && m[9:] == " ['$' for help]\r\n" {
+			fmt.Printf("Grbl version %s initialized\n", m[5:9])
+			break
+		} else if m == "\r\n" {
+			continue
 		}
 
-		if waitFor(s.serialPort, "\r\n", 2) && waitFor(s.serialPort, "\n", -1) {
-			break
-		} else if retry > 3 {
-			return errors.New("Could not detect initialized GRBL")
-		} else {
-			s.serialPort.Close()
-			retry++
-			time.Sleep(1 * time.Second)
+		if err != nil {
+			return errors.New("Unable to detect initialized GRBL")
 		}
 	}
 
-	s.resultChan = make(chan string, 0)
 	return nil
 }
 
 func (s *Streamer) Stop() {
-	_, _ = s.serialPort.Write([]byte("\n!\n!\n"))
+	_, _ = s.serialPort.Write([]byte("\x18\n"))
 	s.serialPort.Close()
-	close(s.resultChan)
 }
 
 func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) error {
-	go serialReader(s.serialPort, s.resultChan)
-	time.Sleep(1 * time.Second)
+	defer close(progress)
 	for idx, block := range doc.Blocks {
-		e := []byte(block.Export(maxPrecision) + "\n")
-		n, err := s.serialPort.Write(e)
+		_, err := s.writer.WriteString(block.Export(maxPrecision) + "\n")
 		if err != nil {
-			return err
+			return errors.New("\nError while sending data:" + fmt.Sprintf("%s", err))
 		}
-		if n != len(e) {
-			return errors.New("Unable to write all data!")
+		err = s.writer.Flush()
+		if err != nil {
+			return errors.New("\nError while flushing writer:" + fmt.Sprintf("%s", err))
 		}
-		res := <-s.resultChan
-		if res != "ok" {
-			return errors.New("Erroneous CNC reply: " + res)
+
+		res := serialReader(s.reader)
+
+		switch res.level {
+		case "error":
+			return errors.New("Received error from CNC: " + res.message)
+		case "alarm":
+			return errors.New("Received alarm from CNC: " + res.message)
+		case "info":
+			fmt.Printf("\nReceived info from CNC: %s\n", res.message)
 		}
 		progress <- idx
+		time.Sleep(1 * time.Microsecond)
 	}
-	close(progress)
 	return nil
 }

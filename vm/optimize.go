@@ -116,3 +116,14 @@ func (vm *Machine) OptimizeMoves() {
 	}
 	vm.posStack = npos
 }
+
+//
+// Limit feedrate
+//
+func (vm *Machine) LimitFeedrate(feed float64) {
+	for idx, m := range vm.posStack {
+		if m.state.feedrate > feed {
+			vm.posStack[idx].state.feedrate = feed
+		}
+	}
+}

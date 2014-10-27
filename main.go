@@ -10,6 +10,8 @@ import "flag"
 import "fmt"
 import "os"
 import "os/signal"
+import "net/http"
+import _ "net/http/pprof"
 
 var (
 	device     = flag.String("device", "", "Serial device for CNC control")
@@ -19,9 +21,14 @@ var (
 	optLifts   = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
 	optDrills  = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
 	precision  = flag.Int("precision", 5, "Precision to use for exported gcode")
+	feedLimit  = flag.Float64("feedlimit", -1, "Maximum feedrate")
 )
 
 func init() {
+	go func() {
+		// Debugging assistance
+		fmt.Printf("\n%s\n", http.ListenAndServe("localhost:6060", nil))
+	}()
 	flag.Parse()
 }
 
@@ -62,6 +69,9 @@ func main() {
 	if *optDrills {
 		m.OptimizeDrills()
 	}
+	if *feedLimit > 0 {
+		m.LimitFeedrate(*feedLimit)
+	}
 
 	output := m.Export()
 
@@ -97,7 +107,15 @@ func main() {
 			}
 		}()
 
-		go s.Send(output, *precision, progress)
+		go func() {
+			err := s.Send(output, *precision, progress)
+			if err != nil {
+				fmt.Printf("\nSend failed: %s\n", err)
+				close(progress)
+				s.Stop()
+				os.Exit(7)
+			}
+		}()
 		for _ = range progress {
 			pBar.Increment()
 		}

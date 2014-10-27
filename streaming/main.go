@@ -2,11 +2,10 @@ package streaming
 
 import "io"
 import "bufio"
-import "github.com/tarm/goserial"
+import "github.com/joushou/goserial"
 import "github.com/joushou/gocnc/gcode"
 import "errors"
 import "fmt"
-import "time"
 
 type Result struct {
 	level   string
@@ -41,7 +40,7 @@ func (s *Streamer) Connect(name string) error {
 	var err error
 	s.serialPort, err = serial.OpenPort(c)
 	if err != nil {
-		return errors.New("Unable to connect to CNC!")
+		return err
 	}
 
 	s.reader = bufio.NewReader(s.serialPort)
@@ -93,7 +92,6 @@ func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int
 			fmt.Printf("\nReceived info from CNC: %s\n", res.message)
 		}
 		progress <- idx
-		time.Sleep(1 * time.Microsecond)
 	}
 	return nil
 }

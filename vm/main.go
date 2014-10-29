@@ -1,6 +1,7 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
+import "math"
 
 //
 // The CNC interpreter/"vm"
@@ -222,8 +223,60 @@ func (vm *Machine) run(stmt Statement) {
 	_, hasY := stmt['Y']
 	_, hasZ := stmt['Z']
 	if (hasX || hasY || hasZ) && vm.mode == "positioning" {
-		pos := positioning(stmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
-		vm.posStack = append(vm.posStack, pos)
+		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
+			approximateArc(stmt, vm, 0.1)
+		} else {
+			pos := positioning(stmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
+			vm.posStack = append(vm.posStack, pos)
+		}
+	}
+}
+
+//
+// Approximate arc
+//
+func approximateArc(stmt Statement, vm *Machine, pointDistance float64) {
+	startPos := vm.posStack[len(vm.posStack)-1]
+	endPos := positioning(stmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
+
+	linStmt := make(Statement)
+	linStmt['G'] = 1
+	vm.state.moveMode = moveModeCCWArc
+
+	clockWise := (vm.state.moveMode == moveModeCWArc)
+	
+	vm.state.moveMode = moveModeLinear
+
+	if vm.state.movePlane == planeXY {
+		cX, cY := endPos.i + startPos.x, endPos.j + startPos.y
+		radius := math.Sqrt(math.Pow(endPos.i - startPos.x, 2) + math.Pow(endPos.j - startPos.y, 2))
+		theta1 := math.Atan2((startPos.y-cY), (startPos.x-cX))
+		theta2 := math.Atan2((endPos.y-cY), (endPos.x-cX))
+
+		tRange := math.Abs(theta2-theta1)
+		arcLen := tRange * math.Sqrt(math.Pow(radius, 2) + math.Pow((endPos.z-startPos.z)/tRange, 2))
+		steps := int(arcLen/pointDistance)
+
+		angle := 0.0
+		for i := 0; i <= steps; i++ {
+			if clockWise {
+				angle = theta1 + (theta2-theta1 - 2*math.Pi)/float64(steps) * float64(i)
+			} else {
+				angle = theta1 + (theta2-theta1)/float64(steps) * float64(i)
+			}
+			x,y := cX + radius * math.Cos(angle), cY + radius * math.Sin(angle)
+			z := startPos.z + endPos.z/float64(steps) * float64(i)
+			linStmt['X'] = x
+			linStmt['Y'] = y
+			linStmt['Z'] = z
+			pos := positioning(linStmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
+			vm.posStack = append(vm.posStack, pos)
+		}
+
+	} else if(vm.state.movePlane == planeXZ) {
+
+	} else if (vm.state.movePlane == planeYZ) {
+
 	}
 }
 

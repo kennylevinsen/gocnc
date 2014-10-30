@@ -167,36 +167,39 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 
 	var add func(x, y, z float64)
 
+	var s1, s2, s3, e1, e2, e3, c1, c2 float64
+
 	switch vm.movePlane {
 	case planeXY:
+		s1, s2, s3, e1, e2, e3, c1, c2 = startX, startY, startZ, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
 	case planeXZ:
-		startY, startZ = startZ, startY
-		endY, endZ = endZ, endY
-		endJ, endK = endK, endJ
+		s1, s2, s3, e1, e2, e3, c1, c2 = startZ, startX, startY, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
-			vm.positioning(Statement{'X': x, 'Y': z, 'Z': y})
+			vm.positioning(Statement{'X': y, 'Y': z, 'Z': x})
 		}
 	case planeYZ:
-		startX, startZ = startZ, startX
-		endX, endZ = endZ, endX
-		endI, endK = endK, endI
+		s1, s2, s3, e1, e2, e3, c1, c2 = startY, startZ, startX, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
-			vm.positioning(Statement{'X': z, 'Y': y, 'Z': x})
+			vm.positioning(Statement{'X': z, 'Y': x, 'Z': y})
 		}
 	}
 
-	radius1 := math.Sqrt(math.Pow(endI-startX, 2) + math.Pow(endJ-startY, 2))
-	radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
+	radius1 := math.Sqrt(math.Pow(c1-s1, 2) + math.Pow(c2-s2, 2))
+	radius2 := math.Sqrt(math.Pow(c1-e1, 2) + math.Pow(c2-e1, 2))
+
+	if radius1 == 0 || radius2 == 0 {
+		panic("Invalid arc statement")
+	}
 
 	if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
 		panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
 	}
 
-	theta1 := math.Atan2((startY - endJ), (startX - endI))
-	theta2 := math.Atan2((endY - endJ), (endX - endI))
+	theta1 := math.Atan2((s2 - c2), (s1 - c1))
+	theta2 := math.Atan2((e2 - c2), (e1 - c1))
 
 	angleDiff := theta2 - theta1
 	if angleDiff < 0 && !clockwise {
@@ -211,17 +214,17 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 		angleDiff += P * 2 * math.Pi
 	}
 
-	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((endZ-startZ)/angleDiff, 2))
+	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
 	steps := int(arcLen / pointDistance)
 
 	angle := 0.0
 	for i := 0; i <= steps; i++ {
 		angle = theta1 + angleDiff/float64(steps)*float64(i)
-		x, y := endI+radius1*math.Cos(angle), endJ+radius1*math.Sin(angle)
-		z := startZ + (endZ-startZ)/float64(steps)*float64(i)
-		add(x, y, z)
+		a1, a2 := c1+radius1*math.Cos(angle), c2+radius1*math.Sin(angle)
+		a3 := s3 + (e3-s3)/float64(steps)*float64(i)
+		add(a1, a2, a3)
 	}
-	add(endX, endY, endZ)
+	add(e1, e2, e3)
 }
 
 //

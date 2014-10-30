@@ -157,8 +157,8 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	endX, endY, endZ, endI, endJ, endK := vm.calcPos(stmt)
 
 	P := 0.0
-	if stmt['P'] > 1 {
-		P = stmt['P'] - 1
+	if pp, ok := stmt['P']; ok {
+		P = pp
 	}
 
 	clockwise := (vm.state.moveMode == moveModeCWArc)

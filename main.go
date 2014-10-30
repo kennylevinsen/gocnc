@@ -58,7 +58,10 @@ func main() {
 	var m vm.Machine
 	m.Init()
 
-	m.Process(document)
+	if err := m.Process(document); err != nil {
+		fmt.Printf("VM failed: %s\n", err)
+		os.Exit(3)
+	}
 
 	// Apply requested modifications
 	if *enforceReturn {

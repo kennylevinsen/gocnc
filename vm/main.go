@@ -3,21 +3,24 @@ package vm
 import "github.com/joushou/gocnc/gcode"
 import "math"
 import "fmt"
+import "errors"
 
 //
 // The CNC interpreter/"vm"
 //
 // It currently supports:
 //
-//   G00 - rapid move
-//   G01 - linear move
-//   G02 - cw arc
-//   G03 - ccw arc
-//   G20 - imperial mode
-//   G21 - metric mode
-//   G80 - cancel mode (?)
-//   G90 - absolute
-//   G91 - relative
+//   G00   - rapid move
+//   G01   - linear move
+//   G02   - cw arc
+//   G03   - ccw arc
+//   G20   - imperial mode
+//   G21   - metric mode
+//   G80   - cancel mode (?)
+//   G90   - absolute
+//   G90.1 - absolute arc
+//   G91   - relative
+//   G91.1 - relative arc
 //
 //   M02 - end of program
 //   M03 - spindle enable clockwise
@@ -87,12 +90,13 @@ type Position struct {
 }
 
 type Machine struct {
-	state     State
-	mode      int
-	metric    bool
-	absolute  bool
-	completed bool
-	posStack  []Position
+	state        State
+	mode         int
+	metric       bool
+	absoluteMove bool
+	absoluteArc  bool
+	completed    bool
+	posStack     []Position
 }
 
 //
@@ -136,8 +140,12 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
 	}
 
-	if !vm.absolute {
+	if !vm.absoluteMove {
 		newX, newY, newZ = pos.x+newX, pos.y+newY, pos.z+newZ
+	}
+
+	if !vm.absoluteArc {
+		newI, newJ, newK = pos.x+newI, pos.y+newJ, pos.z+newK
 	}
 	return newX, newY, newZ, newI, newJ, newK
 }
@@ -159,17 +167,15 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	vm.state.moveMode = moveModeLinear
 
 	if vm.state.movePlane == planeXY {
-		cX, cY := endI+startPos.x, endJ+startPos.y
-
-		radius1 := math.Sqrt(math.Pow(endI-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
+		radius1 := math.Sqrt(math.Pow(endI-startPos.x*2, 2) + math.Pow(endJ-startPos.y*2, 2))
 		radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
 
 		if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
-			panic(fmt.Sprintf("Radius deviation of %f percent!", math.Abs((radius2-radius1)/radius1)*100))
+			panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
 		}
 
-		theta1 := math.Atan2((startPos.y - cY), (startPos.x - cX))
-		theta2 := math.Atan2((endY - cY), (endX - cX))
+		theta1 := math.Atan2((startPos.y - endJ), (startPos.x - endI))
+		theta2 := math.Atan2((endY - endJ), (endX - endI))
 		tRange := 0.0
 		if clockWise {
 			tRange = math.Abs(theta2 - theta1)
@@ -189,7 +195,7 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 				angle = theta1 + (2*math.Pi-math.Abs(theta2-theta1))/float64(steps)*float64(i)
 			}
 			localRadius := radius1 + (radius2-radius1)/float64(steps)*float64(i)
-			x, y := cX+localRadius*math.Cos(angle), cY+localRadius*math.Sin(angle)
+			x, y := endI+localRadius*math.Cos(angle), endJ+localRadius*math.Sin(angle)
 			z := startPos.z + (endZ-startPos.z)/float64(steps)*float64(i)
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
@@ -204,11 +210,17 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 //
 // Dispatch
 //
-func (vm *Machine) run(stmt Statement) {
+func (vm *Machine) run(stmt Statement) (err error) {
 	if vm.completed {
 		// A stop had previously been issued
 		return
 	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
 
 	// G-codes
 	if g, ok := stmt['G']; ok {
@@ -238,9 +250,13 @@ func (vm *Machine) run(stmt Statement) {
 		case 80:
 			vm.mode = vmModeNone
 		case 90:
-			vm.absolute = true
+			vm.absoluteMove = true
+		case 90.1:
+			vm.absoluteArc = true
 		case 91:
-			vm.absolute = false
+			vm.absoluteMove = false
+		case 91.1:
+			vm.absoluteArc = false
 		}
 	}
 
@@ -288,11 +304,13 @@ func (vm *Machine) run(stmt Statement) {
 	_, hasZ := stmt['Z']
 	if (hasX || hasY || hasZ) && vm.mode == vmModePositioning {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			vm.approximateArc(stmt, 0.1, true)
+			vm.approximateArc(stmt, 0.1, false)
 		} else {
 			vm.positioning(stmt)
 		}
 	}
+
+	return nil
 }
 
 //
@@ -301,13 +319,14 @@ func (vm *Machine) run(stmt Statement) {
 func (vm *Machine) Init() {
 	vm.posStack = append(vm.posStack, Position{})
 	vm.metric = true
-	vm.absolute = true
+	vm.absoluteMove = true
+	vm.absoluteArc = true
 }
 
 //
 // Process an AST
 //
-func (vm *Machine) Process(doc *gcode.Document) {
+func (vm *Machine) Process(doc *gcode.Document) (err error) {
 	for _, b := range doc.Blocks {
 		if b.BlockDelete {
 			continue
@@ -319,6 +338,9 @@ func (vm *Machine) Process(doc *gcode.Document) {
 				stmt[word.Address] = word.Command
 			}
 		}
-		vm.run(stmt)
+		if err := vm.run(stmt); err != nil {
+			return err
+		}
 	}
+	return
 }

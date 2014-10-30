@@ -2,6 +2,7 @@ package vm
 
 import "github.com/joushou/gocnc/gcode"
 import "math"
+import "fmt"
 
 //
 // The CNC interpreter/"vm"
@@ -136,7 +137,7 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 	}
 
 	if !vm.absolute {
-		newX, newY, newZ = newX+pos.x, newY+pos.y, newZ+pos.z
+		newX, newY, newZ = pos.x - newX, pos.y - newY, pos.z - newZ
 	}
 	return newX, newY, newZ, newI, newJ, newK
 }
@@ -149,7 +150,7 @@ func (vm *Machine) positioning(stmt Statement) {
 //
 // Approximate arc
 //
-func (vm *Machine) approximateArc(stmt Statement, pointDistance float64) {
+func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreRadiusErrors bool) {
 	startPos := vm.curPos()
 	endX, endY, endZ, endI, endJ, _ := vm.calcPos(stmt)
 
@@ -159,24 +160,37 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64) {
 
 	if vm.state.movePlane == planeXY {
 		cX, cY := endI+startPos.x, endJ+startPos.y
-		radius := math.Sqrt(math.Pow(endI-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
+
+		radius1 := math.Sqrt(math.Pow(endI-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
+		radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
+
+		if math.Abs((radius2 - radius1)/radius1) > 0.01 && !ignoreRadiusErrors  {
+			panic(fmt.Sprintf("Radius deviation of %f percent!", math.Abs((radius2 - radius1)/radius1) * 100))
+		}
+
 		theta1 := math.Atan2((startPos.y - cY), (startPos.x - cX))
 		theta2 := math.Atan2((endY - cY), (endX - cX))
+		tRange := 0.0
+		if clockWise {
+			tRange = math.Abs(theta2 - theta1)
+		} else {
+			tRange = 2*math.Pi - math.Abs(theta2-theta1)
+		}
 
-		tRange := math.Abs(theta2 - theta1)
-		arcLen := tRange * math.Sqrt(math.Pow(radius, 2)+math.Pow((endZ-startPos.z)/tRange, 2))
+		// Approximate if radii are not equal..
+		arcLen := tRange * math.Sqrt(math.Pow((radius1+radius2)/2, 2)+math.Pow((endZ-startPos.z)/tRange, 2))
 		steps := int(arcLen / pointDistance)
 
 		angle := 0.0
 		for i := 0; i <= steps; i++ {
 			if clockWise {
-				angle = theta1 + (theta2-theta1-2*math.Pi)/float64(steps)*float64(i)
+				angle = theta1 - math.Abs(theta2-theta1)/float64(steps)*float64(i)
 			} else {
-				angle = theta1 + (theta2-theta1)/float64(steps)*float64(i)
+				angle = theta1 + (2*math.Pi - math.Abs(theta2-theta1))/float64(steps)*float64(i)
 			}
-			x, y := cX+radius*math.Cos(angle), cY+radius*math.Sin(angle)
-			z := startPos.z + endZ/float64(steps)*float64(i)
-
+			localRadius := radius1 + (radius2-radius1)/float64(steps) * float64(i)
+			x, y := cX+localRadius*math.Cos(angle), cY+localRadius*math.Sin(angle)
+			z := startPos.z + (endZ-startPos.z)/float64(steps)*float64(i)
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
 
@@ -274,7 +288,7 @@ func (vm *Machine) run(stmt Statement) {
 	_, hasZ := stmt['Z']
 	if (hasX || hasY || hasZ) && vm.mode == vmModePositioning {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			vm.approximateArc(stmt, 0.1)
+			vm.approximateArc(stmt, 0.1, true)
 		} else {
 			vm.positioning(stmt)
 		}

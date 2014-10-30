@@ -153,50 +153,65 @@ func (vm *Machine) positioning(stmt Statement) {
 // Calculates an approximate arc from the provided statement
 func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreRadiusErrors bool) {
 	startPos := vm.curPos()
+	startX, startY, startZ := startPos.x, startPos.y, startPos.z
 	endX, endY, endZ, endI, endJ, _ := vm.calcPos(stmt)
 
-	clockWise := (vm.state.moveMode == moveModeCWArc)
+	clockwise := (vm.state.moveMode == moveModeCWArc)
 
 	vm.state.moveMode = moveModeLinear
 
-	if vm.movePlane == planeXY {
-		radius1 := math.Sqrt(math.Pow(endI-startPos.x*2, 2) + math.Pow(endJ-startPos.y*2, 2))
-		radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
+	var add func(x, y, z float64)
 
-		if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
-			panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
-		}
-
-		theta1 := math.Atan2((startPos.y - endJ), (startPos.x - endI))
-		theta2 := math.Atan2((endY - endJ), (endX - endI))
-		tRange := 0.0
-		if clockWise {
-			tRange = math.Abs(theta2 - theta1)
-		} else {
-			tRange = 2*math.Pi - math.Abs(theta2-theta1)
-		}
-
-		// Approximate if radii are not equal..
-		arcLen := tRange * math.Sqrt(math.Pow((radius1+radius2)/2, 2)+math.Pow((endZ-startPos.z)/tRange, 2))
-		steps := int(arcLen / pointDistance)
-
-		angle := 0.0
-		for i := 0; i <= steps; i++ {
-			if clockWise {
-				angle = theta1 - math.Abs(theta2-theta1)/float64(steps)*float64(i)
-			} else {
-				angle = theta1 + (2*math.Pi-math.Abs(theta2-theta1))/float64(steps)*float64(i)
-			}
-			localRadius := radius1 + (radius2-radius1)/float64(steps)*float64(i)
-			x, y := endI+localRadius*math.Cos(angle), endJ+localRadius*math.Sin(angle)
-			z := startPos.z + (endZ-startPos.z)/float64(steps)*float64(i)
+	switch vm.movePlane {
+	case planeXY:
+		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
+	case planeXZ:
+		startY, startZ = startZ, startY
+		endY, endZ = endZ, endY
+		add = func(x, y, z float64) {
+			vm.positioning(Statement{'X': x, 'Y': z, 'Z': y})
+		}
+	case planeYZ:
+		startX, startZ = startZ, startX
+		endX, endZ = endZ, endX
+		add = func(x, y, z float64) {
+			vm.positioning(Statement{'X': z, 'Y': y, 'Z': x})
+		}
+	}
 
-	} else if vm.movePlane == planeXZ {
+	radius1 := math.Sqrt(math.Pow(endI-startX*2, 2) + math.Pow(endJ-startY*2, 2))
+	radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
 
-	} else if vm.movePlane == planeYZ {
+	if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
+		panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
+	}
 
+	theta1 := math.Atan2((startY - endJ), (startX - endI))
+	theta2 := math.Atan2((endY - endJ), (endX - endI))
+	tRange := 0.0
+	if clockwise {
+		tRange = math.Abs(theta2 - theta1)
+	} else {
+		tRange = 2*math.Pi - math.Abs(theta2-theta1)
+	}
+
+	// Approximate if radii are not equal..
+	arcLen := tRange * math.Sqrt(math.Pow((radius1+radius2)/2, 2)+math.Pow((endZ-startZ)/tRange, 2))
+	steps := int(arcLen / pointDistance)
+
+	angle := 0.0
+	for i := 0; i <= steps; i++ {
+		if clockwise {
+			angle = theta1 - math.Abs(theta2-theta1)/float64(steps)*float64(i)
+		} else {
+			angle = theta1 + (2*math.Pi-math.Abs(theta2-theta1))/float64(steps)*float64(i)
+		}
+		localRadius := radius1 + (radius2-radius1)/float64(steps)*float64(i)
+		x, y := endI+localRadius*math.Cos(angle), endJ+localRadius*math.Sin(angle)
+		z := startZ + (endZ-startZ)/float64(steps)*float64(i)
+		add(x, y, z)
 	}
 }
 

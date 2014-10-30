@@ -151,7 +151,7 @@ func (vm *Machine) positioning(stmt Statement) {
 }
 
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreRadiusErrors bool) {
+func (vm *Machine) approximateArc(stmt Statement, maxDeviation float64, ignoreRadiusErrors bool) {
 	startPos := vm.curPos()
 	startX, startY, startZ := startPos.x, startPos.y, startPos.z
 	endX, endY, endZ, endI, endJ, endK := vm.calcPos(stmt)
@@ -188,14 +188,18 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	}
 
 	radius1 := math.Sqrt(math.Pow(c1-s1, 2) + math.Pow(c2-s2, 2))
-	radius2 := math.Sqrt(math.Pow(c1-e1, 2) + math.Pow(c2-e1, 2))
-
+	radius2 := math.Sqrt(math.Pow(c1-e1, 2) + math.Pow(c2-e2, 2))
 	if radius1 == 0 || radius2 == 0 {
 		panic("Invalid arc statement")
 	}
 
-	if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
-		panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
+	if math.Abs((radius2-radius1)/radius1) > 0.01 {
+		if !ignoreRadiusErrors {
+			fmt.Printf("x: %f, y: %f, z: %f endX: %f endY: %f I: %f J: %f \n", s1, s2, s3, e1, e2, c1, c2)
+			panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
+		} else {
+			fmt.Printf("Warning: ignoring radius deviation of %f percent\n", math.Abs((radius2-radius1)/radius1)*100)
+		}
 	}
 
 	theta1 := math.Atan2((s2 - c2), (s1 - c1))
@@ -214,8 +218,14 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 		angleDiff += P * 2 * math.Pi
 	}
 
-	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
-	steps := int(arcLen / pointDistance)
+	//arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
+
+	steps := 1
+	if maxDeviation < radius1 {
+		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-maxDeviation/radius1)))))
+	}
+
+	//steps := int(arcLen / pointDistance)
 
 	angle := 0.0
 	for i := 0; i <= steps; i++ {
@@ -326,7 +336,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	_, hasZ := stmt['Z']
 	if hasX || hasY || hasZ {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			vm.approximateArc(stmt, 0.1, false)
+			vm.approximateArc(stmt, 0.1, true)
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
 			vm.positioning(stmt)
 		} else {
@@ -352,7 +362,7 @@ func (vm *Machine) Init() {
 	vm.posStack = append(vm.posStack, Position{})
 	vm.metric = true
 	vm.absoluteMove = true
-	vm.absoluteArc = true
+	vm.absoluteArc = false
 	vm.movePlane = planeXY
 }
 

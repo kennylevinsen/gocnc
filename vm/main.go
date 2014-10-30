@@ -156,6 +156,11 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	startX, startY, startZ := startPos.x, startPos.y, startPos.z
 	endX, endY, endZ, endI, endJ, endK := vm.calcPos(stmt)
 
+	P := 0.0
+	if stmt['P'] > 1 {
+		P = stmt['P'] - 1
+	}
+
 	clockwise := (vm.state.moveMode == moveModeCWArc)
 
 	vm.state.moveMode = moveModeLinear
@@ -183,7 +188,7 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 		}
 	}
 
-	radius1 := math.Sqrt(math.Pow(endI-startX*2, 2) + math.Pow(endJ-startY*2, 2))
+	radius1 := math.Sqrt(math.Pow(endI-startX, 2) + math.Pow(endJ-startY, 2))
 	radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
 
 	if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
@@ -192,29 +197,28 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 
 	theta1 := math.Atan2((startY - endJ), (startX - endI))
 	theta2 := math.Atan2((endY - endJ), (endX - endI))
+
 	tRange := 0.0
 	if clockwise {
-		tRange = math.Abs(theta2 - theta1)
+		tRange = P*2*math.Pi + math.Abs(theta2 - theta1)
 	} else {
-		tRange = 2*math.Pi - math.Abs(theta2-theta1)
+		tRange = (P+1)*2*math.Pi - math.Abs(theta2-theta1)
 	}
-
-	// Approximate if radii are not equal..
-	arcLen := tRange * math.Sqrt(math.Pow((radius1+radius2)/2, 2)+math.Pow((endZ-startZ)/tRange, 2))
+	arcLen := tRange * math.Sqrt(math.Pow(radius1, 2)+math.Pow((endZ-startZ)/tRange, 2))
 	steps := int(arcLen / pointDistance)
 
 	angle := 0.0
 	for i := 0; i <= steps; i++ {
 		if clockwise {
-			angle = theta1 - math.Abs(theta2-theta1)/float64(steps)*float64(i)
+			angle = theta1 - (P*2*math.Pi + math.Abs(theta2-theta1))/float64(steps)*float64(i)
 		} else {
-			angle = theta1 + (2*math.Pi-math.Abs(theta2-theta1))/float64(steps)*float64(i)
+			angle = theta1 + ((P+1)*2*math.Pi - math.Abs(theta2-theta1))/float64(steps)*float64(i)
 		}
-		localRadius := radius1 + (radius2-radius1)/float64(steps)*float64(i)
-		x, y := endI+localRadius*math.Cos(angle), endJ+localRadius*math.Sin(angle)
+		x, y := endI+radius1*math.Cos(angle), endJ+radius1*math.Sin(angle)
 		z := startZ + (endZ-startZ)/float64(steps)*float64(i)
 		add(x, y, z)
 	}
+	add(endX,endY,endZ)
 }
 
 //

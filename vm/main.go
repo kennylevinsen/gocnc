@@ -14,6 +14,9 @@ import "errors"
 //   G01   - linear move
 //   G02   - cw arc
 //   G03   - ccw arc
+//   G17   - xy arc plane
+//   G18   - xz arc plane
+//   G19   - yz arc plane
 //   G20   - imperial mode
 //   G21   - metric mode
 //   G80   - cancel mode (?)
@@ -44,11 +47,11 @@ type Statement map[rune]float64
 //
 
 const (
-	moveModeInitial = iota
-	moveModeRapid   = iota
-	moveModeLinear  = iota
-	moveModeCWArc   = iota
-	moveModeCCWArc  = iota
+	moveModeNone   = iota
+	moveModeRapid  = iota
+	moveModeLinear = iota
+	moveModeCWArc  = iota
+	moveModeCCWArc = iota
 )
 
 const (
@@ -66,7 +69,6 @@ type State struct {
 	feedrate         float64
 	spindleSpeed     float64
 	moveMode         int
-	movePlane        int
 	spindleEnabled   bool
 	spindleClockwise bool
 	floodCoolant     bool
@@ -77,7 +79,6 @@ func (s *State) Equal(o *State) bool {
 	return (s.feedrate == o.feedrate &&
 		s.spindleSpeed == o.spindleSpeed &&
 		s.moveMode == o.moveMode &&
-		s.movePlane == o.movePlane &&
 		s.spindleEnabled == o.spindleEnabled &&
 		s.spindleClockwise == o.spindleClockwise &&
 		s.floodCoolant == o.floodCoolant &&
@@ -91,10 +92,10 @@ type Position struct {
 
 type Machine struct {
 	state        State
-	mode         int
 	metric       bool
 	absoluteMove bool
 	absoluteArc  bool
+	movePlane    int
 	completed    bool
 	posStack     []Position
 }
@@ -102,14 +103,18 @@ type Machine struct {
 //
 // Positioning
 //
+
+// Retrieves position from top of stack
 func (vm *Machine) curPos() Position {
 	return vm.posStack[len(vm.posStack)-1]
 }
 
+// Appends a position to the stack
 func (vm *Machine) addPos(pos Position) {
 	vm.posStack = append(vm.posStack, pos)
 }
 
+// Calculates the absolute position of the given statement, including optional I, J, K parameters
 func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
 	var ok bool
@@ -155,9 +160,7 @@ func (vm *Machine) positioning(stmt Statement) {
 	vm.addPos(Position{vm.state, newX, newY, newZ})
 }
 
-//
-// Approximate arc
-//
+// Calculates an approximate arc from the provided statement
 func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreRadiusErrors bool) {
 	startPos := vm.curPos()
 	endX, endY, endZ, endI, endJ, _ := vm.calcPos(stmt)
@@ -166,7 +169,7 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 
 	vm.state.moveMode = moveModeLinear
 
-	if vm.state.movePlane == planeXY {
+	if vm.movePlane == planeXY {
 		radius1 := math.Sqrt(math.Pow(endI-startPos.x*2, 2) + math.Pow(endJ-startPos.y*2, 2))
 		radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
 
@@ -200,9 +203,9 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
 
-	} else if vm.state.movePlane == planeXZ {
+	} else if vm.movePlane == planeXZ {
 
-	} else if vm.state.movePlane == planeYZ {
+	} else if vm.movePlane == planeYZ {
 
 	}
 }
@@ -226,29 +229,25 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	if g, ok := stmt['G']; ok {
 		switch g {
 		case 0:
-			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeRapid
 		case 1:
-			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeLinear
 		case 2:
-			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeCWArc
 		case 3:
-			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeCCWArc
 		case 17:
-			vm.state.movePlane = planeXY
+			vm.movePlane = planeXY
 		case 18:
-			vm.state.movePlane = planeXZ
+			vm.movePlane = planeXZ
 		case 19:
-			vm.state.movePlane = planeYZ
+			vm.movePlane = planeYZ
 		case 20:
 			vm.metric = false
 		case 21:
 			vm.metric = true
 		case 80:
-			vm.mode = vmModeNone
+			vm.state.moveMode = moveModeNone
 		case 90:
 			vm.absoluteMove = true
 		case 90.1:
@@ -290,11 +289,17 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		if !vm.metric {
 			g *= 25.4
 		}
+		if g <= 0 {
+			return errors.New("Feedrate must be greater than zero")
+		}
 		vm.state.feedrate = g
 	}
 
 	// S-codes
 	if g, ok := stmt['S']; ok {
+		if g < 0 {
+			return errors.New("Spindle speed must be greater than or equal to zero")
+		}
 		vm.state.spindleSpeed = g
 	}
 
@@ -302,11 +307,13 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	_, hasX := stmt['X']
 	_, hasY := stmt['Y']
 	_, hasZ := stmt['Z']
-	if (hasX || hasY || hasZ) && vm.mode == vmModePositioning {
+	if hasX || hasY || hasZ {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
 			vm.approximateArc(stmt, 0.1, false)
-		} else {
+		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
 			vm.positioning(stmt)
+		} else {
+			return errors.New("Move attempted without an active move mode")
 		}
 	}
 
@@ -321,6 +328,7 @@ func (vm *Machine) Init() {
 	vm.metric = true
 	vm.absoluteMove = true
 	vm.absoluteArc = true
+	vm.movePlane = planeXY
 }
 
 //

@@ -17,6 +17,7 @@ var (
 	inputFile     = flag.String("input", "", "NC file to process")
 	outputFile    = flag.String("output", "", "Location to dump processed data")
 	dumpStdout    = flag.Bool("stdout", false, "Output to stdout")
+	debugDump     = flag.Bool("debugdump", false, "Dump VM position state after optimization")
 	optVector     = flag.Bool("optvector", true, "Perform vectorized optimization")
 	optLifts      = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
 	optDrills     = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
@@ -39,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *outputFile == "" && *device == "" && !*dumpStdout {
+	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
 		fmt.Printf("Error: No output location provided\n")
 		os.Exit(1)
 	}
@@ -88,7 +89,15 @@ func main() {
 	if *feedLimit > 0 {
 		m.LimitFeedrate(*feedLimit)
 	}
-	output := m.Export()
+
+	if *debugDump {
+		m.Dump()
+	}
+	output, err := m.Export()
+	if err != nil {
+		fmt.Printf("Error: Could not export vm state: %s\n", err)
+		os.Exit(3)
+	}
 
 	if *dumpStdout {
 		fmt.Printf(output.Export(*precision) + "\n")

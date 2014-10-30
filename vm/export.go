@@ -1,17 +1,18 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
+import "errors"
 import "fmt"
 
 //
 // Export machine code
 //
 
-func (vm *Machine) Export() *gcode.Document {
+func (vm *Machine) Export() (*gcode.Document, error) {
 	var (
 		lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ         float64
 		spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
-		lastMoveMode, lastMovePlane                                 float64 = -1, -1
+		lastMoveMode                                                float64 = -1
 		doc                                                         gcode.Document
 	)
 
@@ -32,30 +33,18 @@ func (vm *Machine) Export() *gcode.Document {
 
 	for _, pos := range vm.posStack {
 		s := pos.state
-		var moveMode, movePlane float64
+		var moveMode float64
 
 		// fetch move mode
 		switch s.moveMode {
-		case moveModeInitial:
+		case moveModeNone:
 			continue
 		case moveModeRapid:
 			moveMode = 0
 		case moveModeLinear:
 			moveMode = 1
-		case moveModeCWArc:
-			moveMode = 2
-		case moveModeCCWArc:
-			moveMode = 3
-		}
-
-		// fetch move plane
-		switch s.movePlane {
-		case planeXY:
-			movePlane = 17
-		case planeXZ:
-			movePlane = 18
-		case planeYZ:
-			movePlane = 19
+		default:
+			return nil, errors.New("Cannot export arcs")
 		}
 
 		// handle spindle
@@ -101,12 +90,6 @@ func (vm *Machine) Export() *gcode.Document {
 
 		var moveBlock gcode.Block
 
-		// handle move plane
-		if movePlane != lastMovePlane {
-			moveBlock.AppendNode(&gcode.Word{'G', movePlane})
-			lastMovePlane = movePlane
-		}
-
 		// handle move mode
 		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc || moveMode != lastMoveMode {
 			moveBlock.AppendNode(&gcode.Word{'G', moveMode})
@@ -127,17 +110,12 @@ func (vm *Machine) Export() *gcode.Document {
 			lastZ = pos.z
 		}
 
-		// handle arc
-		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc {
-			panic("Cannot export arcs")
-		}
-
 		// put on slice
 		if len(moveBlock.Nodes) > 0 {
 			doc.AppendBlock(moveBlock)
 		}
 	}
-	return &doc
+	return &doc, nil
 }
 
 //
@@ -146,20 +124,20 @@ func (vm *Machine) Export() *gcode.Document {
 func (vm *Machine) Dump() {
 	for _, m := range vm.posStack {
 		switch m.state.moveMode {
-		case moveModeInitial:
-			fmt.Printf("initial pos, ")
+		case moveModeNone:
+			fmt.Printf("Null move\n")
 		case moveModeRapid:
-			fmt.Printf("rapid move, ")
+			fmt.Printf("Rapid move\n")
 		case moveModeLinear:
-			fmt.Printf("linear move, ")
+			fmt.Printf("Linear move\n")
 		case moveModeCWArc:
-			fmt.Printf("clockwise arc, ")
+			fmt.Printf("Clockwise arc\n")
 		case moveModeCCWArc:
-			fmt.Printf("counterclockwise arc, ")
+			fmt.Printf("Counterclockwise arc\n")
 		}
-
-		fmt.Printf("feedrate: %f, ", m.state.feedrate)
-		fmt.Printf("spindle: %f, ", m.state.spindleSpeed)
-		fmt.Printf("X: %f, Y: %f, Z: %f, I: %f, J: %f, K: %f\n", m.x, m.y, m.z)
+		fmt.Printf("   Feedrate: %f\n", m.state.feedrate)
+		fmt.Printf("   Spindle: %t, clockwise: %t, speed: %f\n", m.state.spindleEnabled, m.state.spindleClockwise, m.state.spindleSpeed)
+		fmt.Printf("   Mist coolant: %t, flood coolant: %t\n", m.state.mistCoolant, m.state.floodCoolant)
+		fmt.Printf("   X: %f, Y: %f, Z: %f\n", m.x, m.y, m.z)
 	}
 }

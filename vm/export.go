@@ -11,7 +11,7 @@ func (vm *Machine) Export() *gcode.Document {
 	var (
 		lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ         float64
 		spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
-		lastMoveMode, lastMovePlane                                 float64
+		lastMoveMode, lastMovePlane                                 float64 = -1, -1
 		doc                                                         gcode.Document
 	)
 
@@ -129,18 +129,7 @@ func (vm *Machine) Export() *gcode.Document {
 
 		// handle arc
 		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc {
-			if pos.i != 0 {
-				moveBlock.AppendNode(&gcode.Word{'I', pos.i})
-			}
-			if pos.j != 0 {
-				moveBlock.AppendNode(&gcode.Word{'J', pos.j})
-			}
-			if pos.k != 0 {
-				moveBlock.AppendNode(&gcode.Word{'K', pos.k})
-			}
-			if pos.rot != 1 {
-				moveBlock.AppendNode(&gcode.Word{'P', float64(pos.rot)})
-			}
+			panic("Cannot export arcs")
 		}
 
 		// put on slice
@@ -171,6 +160,6 @@ func (vm *Machine) Dump() {
 
 		fmt.Printf("feedrate: %f, ", m.state.feedrate)
 		fmt.Printf("spindle: %f, ", m.state.spindleSpeed)
-		fmt.Printf("X: %f, Y: %f, Z: %f, I: %f, J: %f, K: %f\n", m.x, m.y, m.z, m.i, m.j, m.k)
+		fmt.Printf("X: %f, Y: %f, Z: %f, I: %f, J: %f, K: %f\n", m.x, m.y, m.z)
 	}
 }

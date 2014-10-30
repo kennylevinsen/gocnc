@@ -53,6 +53,11 @@ const (
 	planeYZ = iota
 )
 
+const (
+	vmModeNone        = iota
+	vmModePositioning = iota
+)
+
 type State struct {
 	feedrate         float64
 	spindleSpeed     float64
@@ -78,13 +83,11 @@ func (s *State) Equal(o *State) bool {
 type Position struct {
 	state   State
 	x, y, z float64
-	i, j, k float64
-	rot     int64
 }
 
 type Machine struct {
 	state     State
-	mode      string
+	mode      int
 	metric    bool
 	absolute  bool
 	completed bool
@@ -94,27 +97,33 @@ type Machine struct {
 //
 // Positioning
 //
-func positioning(stmt Statement, state State, pos Position, metric, absolute bool) Position {
-	var (
-		newX, newY, newZ, newI, newJ, newK float64
-		rot                                int64
-		ok                                 bool
-	)
+
+func (vm *Machine) curPos() Position {
+	return vm.posStack[len(vm.posStack)-1]
+}
+
+func (vm *Machine) addPos(pos Position) {
+	vm.posStack = append(vm.posStack, pos)
+}
+
+func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK float64) {
+	pos := vm.curPos()
+	var ok bool
 	if newX, ok = stmt['X']; !ok {
 		newX = pos.x
-	} else if !metric {
+	} else if !vm.metric {
 		newX *= 25.4
 	}
 
 	if newY, ok = stmt['Y']; !ok {
 		newY = pos.y
-	} else if !metric {
+	} else if !vm.metric {
 		newY *= 25.4
 	}
 
 	if newZ, ok = stmt['Z']; !ok {
 		newZ = pos.z
-	} else if !metric {
+	} else if !vm.metric {
 		newZ *= 25.4
 	}
 
@@ -122,19 +131,60 @@ func positioning(stmt Statement, state State, pos Position, metric, absolute boo
 	newJ = stmt['J']
 	newK = stmt['K']
 
-	if !metric {
-		newI, newJ, newK = newI*25.4, newJ*25.4, newK*25.4
+	if !vm.metric {
+		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
 	}
 
-	rot = int64(stmt['P'])
-	if rot == 0 {
-		rot = 1
-	}
-
-	if !absolute {
+	if !vm.absolute {
 		newX, newY, newZ = newX+pos.x, newY+pos.y, newZ+pos.z
 	}
-	return Position{state, newX, newY, newZ, newI, newJ, newK, rot}
+	return newX, newY, newZ, newI, newJ, newK
+}
+
+func (vm *Machine) positioning(stmt Statement) {
+	newX, newY, newZ, _, _, _ := vm.calcPos(stmt)
+	vm.addPos(Position{vm.state, newX, newY, newZ})
+}
+
+//
+// Approximate arc
+//
+func (vm *Machine) approximateArc(stmt Statement, pointDistance float64) {
+	startPos := vm.curPos()
+	endX, endY, endZ, endI, endJ, _ := vm.calcPos(stmt)
+
+	clockWise := (vm.state.moveMode == moveModeCWArc)
+
+	vm.state.moveMode = moveModeLinear
+
+	if vm.state.movePlane == planeXY {
+		cX, cY := endI+startPos.x, endJ+startPos.y
+		radius := math.Sqrt(math.Pow(endJ-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
+		theta1 := math.Atan2((startPos.y - cY), (startPos.x - cX))
+		theta2 := math.Atan2((endY - cY), (endX - cX))
+
+		tRange := math.Abs(theta2 - theta1)
+		arcLen := tRange * math.Sqrt(math.Pow(radius, 2)+math.Pow((endZ-startPos.z)/tRange, 2))
+		steps := int(arcLen / pointDistance)
+
+		angle := 0.0
+		for i := 0; i <= steps; i++ {
+			if clockWise {
+				angle = theta1 + (theta2-theta1-2*math.Pi)/float64(steps)*float64(i)
+			} else {
+				angle = theta1 + (theta2-theta1)/float64(steps)*float64(i)
+			}
+			x, y := cX+radius*math.Cos(angle), cY+radius*math.Sin(angle)
+			z := startPos.z + endZ/float64(steps)*float64(i)
+
+			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
+		}
+
+	} else if vm.state.movePlane == planeXZ {
+
+	} else if vm.state.movePlane == planeYZ {
+
+	}
 }
 
 //
@@ -150,16 +200,16 @@ func (vm *Machine) run(stmt Statement) {
 	if g, ok := stmt['G']; ok {
 		switch g {
 		case 0:
-			vm.mode = "positioning"
+			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeRapid
 		case 1:
-			vm.mode = "positioning"
+			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeLinear
 		case 2:
-			vm.mode = "positioning"
+			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeCWArc
 		case 3:
-			vm.mode = "positioning"
+			vm.mode = vmModePositioning
 			vm.state.moveMode = moveModeCCWArc
 		case 17:
 			vm.state.movePlane = planeXY
@@ -172,7 +222,7 @@ func (vm *Machine) run(stmt Statement) {
 		case 21:
 			vm.metric = true
 		case 80:
-			vm.mode = "cancelled"
+			vm.mode = vmModeNone
 		case 90:
 			vm.absolute = true
 		case 91:
@@ -222,61 +272,12 @@ func (vm *Machine) run(stmt Statement) {
 	_, hasX := stmt['X']
 	_, hasY := stmt['Y']
 	_, hasZ := stmt['Z']
-	if (hasX || hasY || hasZ) && vm.mode == "positioning" {
+	if (hasX || hasY || hasZ) && vm.mode == vmModePositioning {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			approximateArc(stmt, vm, 0.1)
+			vm.approximateArc(stmt, 0.1)
 		} else {
-			pos := positioning(stmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
-			vm.posStack = append(vm.posStack, pos)
+			vm.positioning(stmt)
 		}
-	}
-}
-
-//
-// Approximate arc
-//
-func approximateArc(stmt Statement, vm *Machine, pointDistance float64) {
-	startPos := vm.posStack[len(vm.posStack)-1]
-	endPos := positioning(stmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
-
-	linStmt := make(Statement)
-	linStmt['G'] = 1
-	vm.state.moveMode = moveModeCCWArc
-
-	clockWise := (vm.state.moveMode == moveModeCWArc)
-	
-	vm.state.moveMode = moveModeLinear
-
-	if vm.state.movePlane == planeXY {
-		cX, cY := endPos.i + startPos.x, endPos.j + startPos.y
-		radius := math.Sqrt(math.Pow(endPos.i - startPos.x, 2) + math.Pow(endPos.j - startPos.y, 2))
-		theta1 := math.Atan2((startPos.y-cY), (startPos.x-cX))
-		theta2 := math.Atan2((endPos.y-cY), (endPos.x-cX))
-
-		tRange := math.Abs(theta2-theta1)
-		arcLen := tRange * math.Sqrt(math.Pow(radius, 2) + math.Pow((endPos.z-startPos.z)/tRange, 2))
-		steps := int(arcLen/pointDistance)
-
-		angle := 0.0
-		for i := 0; i <= steps; i++ {
-			if clockWise {
-				angle = theta1 + (theta2-theta1 - 2*math.Pi)/float64(steps) * float64(i)
-			} else {
-				angle = theta1 + (theta2-theta1)/float64(steps) * float64(i)
-			}
-			x,y := cX + radius * math.Cos(angle), cY + radius * math.Sin(angle)
-			z := startPos.z + endPos.z/float64(steps) * float64(i)
-			linStmt['X'] = x
-			linStmt['Y'] = y
-			linStmt['Z'] = z
-			pos := positioning(linStmt, vm.state, vm.posStack[len(vm.posStack)-1], vm.metric, vm.absolute)
-			vm.posStack = append(vm.posStack, pos)
-		}
-
-	} else if(vm.state.movePlane == planeXZ) {
-
-	} else if (vm.state.movePlane == planeYZ) {
-
 	}
 }
 

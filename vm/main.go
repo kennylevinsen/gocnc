@@ -196,21 +196,28 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	theta1 := math.Atan2((startY - endJ), (startX - endI))
 	theta2 := math.Atan2((endY - endJ), (endX - endI))
 
-	tRange := 0.0
-	if clockwise {
-		tRange = P*2*math.Pi + math.Abs(theta2 - theta1)
-	} else {
-		tRange = (P+1)*2*math.Pi - math.Abs(theta2-theta1)
+	angleDiff := theta2 - theta1
+	if angleDiff < 0 && !clockwise {
+		angleDiff += 2*math.Pi
+	} else if angleDiff > 0 && clockwise {
+		angleDiff -= 2*math.Pi
 	}
-	arcLen := tRange * math.Sqrt(math.Pow(radius1, 2)+math.Pow((endZ-startZ)/tRange, 2))
+
+	if clockwise {
+		angleDiff -= P*2*math.Pi
+	} else {
+		angleDiff += P*2*math.Pi
+	}
+
+	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((endZ-startZ)/angleDiff, 2))
 	steps := int(arcLen / pointDistance)
 
 	angle := 0.0
 	for i := 0; i <= steps; i++ {
 		if clockwise {
-			angle = theta1 - (P*2*math.Pi + math.Abs(theta2-theta1))/float64(steps)*float64(i)
+			angle = theta1 + angleDiff/float64(steps)*float64(i)
 		} else {
-			angle = theta1 + ((P+1)*2*math.Pi - math.Abs(theta2-theta1))/float64(steps)*float64(i)
+			angle = theta1 + angleDiff/float64(steps)*float64(i)
 		}
 		x, y := endI+radius1*math.Cos(angle), endJ+radius1*math.Sin(angle)
 		z := startZ + (endZ-startZ)/float64(steps)*float64(i)

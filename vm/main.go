@@ -75,16 +75,6 @@ type State struct {
 	mistCoolant      bool
 }
 
-func (s *State) Equal(o *State) bool {
-	return (s.feedrate == o.feedrate &&
-		s.spindleSpeed == o.spindleSpeed &&
-		s.moveMode == o.moveMode &&
-		s.spindleEnabled == o.spindleEnabled &&
-		s.spindleClockwise == o.spindleClockwise &&
-		s.floodCoolant == o.floodCoolant &&
-		s.mistCoolant == o.mistCoolant)
-}
-
 type Position struct {
 	state   State
 	x, y, z float64
@@ -320,6 +310,14 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	return nil
 }
 
+// Ensure that machine state is correct after execution
+func (vm *Machine) finalize() {
+	if vm.state != vm.curPos().state {
+		vm.state.moveMode = moveModeNone
+		vm.addPos(Position{state: vm.state})
+	}
+}
+
 //
 // Initialize VM state
 //
@@ -350,5 +348,6 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 			return err
 		}
 	}
+	vm.finalize()
 	return
 }

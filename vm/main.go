@@ -175,7 +175,7 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64) {
 				angle = theta1 + (theta2-theta1)/float64(steps)*float64(i)
 			}
 			x, y := cX+radius*math.Cos(angle), cY+radius*math.Sin(angle)
-			z := startPos.z + endZ/float64(steps)*float64(i)
+			z := startPos.z + (endZ-startPos.z)/float64(steps)*float64(i)
 
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}

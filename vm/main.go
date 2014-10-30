@@ -154,7 +154,7 @@ func (vm *Machine) positioning(stmt Statement) {
 func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreRadiusErrors bool) {
 	startPos := vm.curPos()
 	startX, startY, startZ := startPos.x, startPos.y, startPos.z
-	endX, endY, endZ, endI, endJ, _ := vm.calcPos(stmt)
+	endX, endY, endZ, endI, endJ, endK := vm.calcPos(stmt)
 
 	clockwise := (vm.state.moveMode == moveModeCWArc)
 
@@ -170,12 +170,14 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 	case planeXZ:
 		startY, startZ = startZ, startY
 		endY, endZ = endZ, endY
+		endJ, endK = endK, endJ
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': x, 'Y': z, 'Z': y})
 		}
 	case planeYZ:
 		startX, startZ = startZ, startX
 		endX, endZ = endZ, endX
+		endI, endK = endK, endI
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': z, 'Y': y, 'Z': x})
 		}

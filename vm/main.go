@@ -133,12 +133,10 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 	newK = stmt['K']
 
 	if !vm.metric {
-		fmt.Printf("Not metric..")
 		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
 	}
 
 	if !vm.absolute {
-		fmt.Printf("Not absolute..")
 		newX, newY, newZ = pos.x - newX, pos.y - newY, pos.z - newZ
 	}
 	return newX, newY, newZ, newI, newJ, newK

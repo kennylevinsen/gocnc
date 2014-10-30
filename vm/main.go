@@ -137,7 +137,7 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 	}
 
 	if !vm.absolute {
-		newX, newY, newZ = pos.x - newX, pos.y - newY, pos.z - newZ
+		newX, newY, newZ = pos.x+newX, pos.y+newY, pos.z+newZ
 	}
 	return newX, newY, newZ, newI, newJ, newK
 }
@@ -164,8 +164,8 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 		radius1 := math.Sqrt(math.Pow(endI-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
 		radius2 := math.Sqrt(math.Pow(endI-endX, 2) + math.Pow(endJ-endX, 2))
 
-		if math.Abs((radius2 - radius1)/radius1) > 0.01 && !ignoreRadiusErrors  {
-			panic(fmt.Sprintf("Radius deviation of %f percent!", math.Abs((radius2 - radius1)/radius1) * 100))
+		if math.Abs((radius2-radius1)/radius1) > 0.01 && !ignoreRadiusErrors {
+			panic(fmt.Sprintf("Radius deviation of %f percent!", math.Abs((radius2-radius1)/radius1)*100))
 		}
 
 		theta1 := math.Atan2((startPos.y - cY), (startPos.x - cX))
@@ -186,9 +186,9 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64, ignoreR
 			if clockWise {
 				angle = theta1 - math.Abs(theta2-theta1)/float64(steps)*float64(i)
 			} else {
-				angle = theta1 + (2*math.Pi - math.Abs(theta2-theta1))/float64(steps)*float64(i)
+				angle = theta1 + (2*math.Pi-math.Abs(theta2-theta1))/float64(steps)*float64(i)
 			}
-			localRadius := radius1 + (radius2-radius1)/float64(steps) * float64(i)
+			localRadius := radius1 + (radius2-radius1)/float64(steps)*float64(i)
 			x, y := cX+localRadius*math.Cos(angle), cY+localRadius*math.Sin(angle)
 			z := startPos.z + (endZ-startPos.z)/float64(steps)*float64(i)
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})

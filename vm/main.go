@@ -97,7 +97,6 @@ type Machine struct {
 //
 // Positioning
 //
-
 func (vm *Machine) curPos() Position {
 	return vm.posStack[len(vm.posStack)-1]
 }
@@ -109,6 +108,7 @@ func (vm *Machine) addPos(pos Position) {
 func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
 	var ok bool
+
 	if newX, ok = stmt['X']; !ok {
 		newX = pos.x
 	} else if !vm.metric {
@@ -159,7 +159,7 @@ func (vm *Machine) approximateArc(stmt Statement, pointDistance float64) {
 
 	if vm.state.movePlane == planeXY {
 		cX, cY := endI+startPos.x, endJ+startPos.y
-		radius := math.Sqrt(math.Pow(endJ-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
+		radius := math.Sqrt(math.Pow(endI-startPos.x, 2) + math.Pow(endJ-startPos.y, 2))
 		theta1 := math.Atan2((startPos.y - cY), (startPos.x - cX))
 		theta2 := math.Atan2((endY - cY), (endX - cX))
 

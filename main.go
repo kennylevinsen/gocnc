@@ -13,18 +13,20 @@ import "os/signal"
 import "time"
 
 var (
-	device        = flag.String("device", "", "Serial device for CNC control")
-	inputFile     = flag.String("input", "", "NC file to process")
-	outputFile    = flag.String("output", "", "Location to dump processed data")
-	dumpStdout    = flag.Bool("stdout", false, "Output to stdout")
-	debugDump     = flag.Bool("debugdump", false, "Dump VM position state after optimization")
-	optVector     = flag.Bool("optvector", true, "Perform vectorized optimization")
-	optLifts      = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
-	optDrills     = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
-	precision     = flag.Int("precision", 5, "Precision to use for exported gcode")
-	feedLimit     = flag.Float64("feedlimit", -1, "Maximum feedrate")
-	safetyHeight  = flag.Float64("safetyheight", -1, "Enforce safety height")
-	enforceReturn = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
+	device           = flag.String("device", "", "Serial device for CNC control")
+	inputFile        = flag.String("input", "", "NC file to process")
+	outputFile       = flag.String("output", "", "Location to dump processed data")
+	dumpStdout       = flag.Bool("stdout", false, "Output to stdout")
+	debugDump        = flag.Bool("debugdump", false, "Dump VM position state after optimization")
+	optVector        = flag.Bool("optvector", true, "Perform vectorized optimization")
+	optLifts         = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
+	optDrills        = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
+	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc")
+	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length")
+	precision        = flag.Int("precision", 4, "Precision to use for exported gcode")
+	feedLimit        = flag.Float64("feedlimit", -1, "Maximum feedrate")
+	safetyHeight     = flag.Float64("safetyheight", -1, "Enforce safety height")
+	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
 )
 
 func main() {
@@ -37,11 +39,13 @@ func main() {
 
 	if *inputFile == "" {
 		fmt.Printf("Error: No file provided\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
 		fmt.Printf("Error: No output location provided\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -57,7 +61,7 @@ func main() {
 
 	// Run through the VM
 	var m vm.Machine
-	m.Init()
+	m.Init(*maxArcDeviation, *minArcLineLength)
 
 	if err := m.Process(document); err != nil {
 		fmt.Printf("VM failed: %s\n", err)

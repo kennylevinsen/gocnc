@@ -83,32 +83,39 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		sets                []Set = make([]Set, 0)
 		curSet              Set   = make(Set, 0)
 		safetyHeight        float64
+		skipInitialMove     bool = false
 	)
 
 	// Find grouped drills
-	for _, m := range vm.posStack {
+	for idx, m := range vm.posStack {
 		if m.z != lastz && (m.x != lastx || m.y != lasty) {
 			panic("Complex z-motion detected")
+		}
+
+		// The first element is a null-move, so we skip to the second
+		if idx == 1 && m.x == 0 && m.y == 0 && m.z > 0 {
+			skipInitialMove = true
 		}
 
 		if m.x == lastx && m.y == lasty {
 			if lastz >= 0 && m.z < 0 {
 				// Down move
-				curSet = append(curSet, m)
+				//curSet = append(curSet, m)
 			} else if lastz < 0 && m.z >= 0 {
 				// Up move - ignored in set
 				//curSet = append(curSet, m)
-				sets = append(sets, curSet)
+				if !skipInitialMove {
+					sets = append(sets, curSet)
+				}
 				curSet = make(Set, 0)
-			} else {
-				// Minor z-move
-				curSet = append(curSet, m)
+				skipInitialMove = false
+				goto updateLast // Skip append
 			}
-		} else {
-			// Regular move
-			curSet = append(curSet, m)
 		}
+		// Regular move
+		curSet = append(curSet, m)
 
+	updateLast:
 		if m.z > safetyHeight {
 			safetyHeight = m.z
 		}
@@ -173,15 +180,19 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 				// Redundant lift
 				return
 			} else {
+				fmt.Printf("?!\n")
 				addPos(pos)
 			}
 		} else {
+			fmt.Printf("Damn! X1 %f, X2 %f, Y1 %f, Y2 %f\n", pos.x, curPos.x, pos.y, curPos.y)
 			step1 := newPos[len(newPos)-1]
 			step1.z = safetyHeight
+			step1.state.moveMode = moveModeRapid
 			step2 := step1
 			step2.x, step2.y = pos.x, pos.y
 			step3 := step2
 			step3.z = pos.z
+			step3.state.moveMode = moveModeLinear
 
 			addPos(step1)
 			addPos(step2)
@@ -190,7 +201,10 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 
 	}
 
-	for _, m := range sortedSets {
+	for idx, m := range sortedSets {
+		if idx < 8 || idx > 9 {
+			continue
+		}
 		for idx, p := range m {
 			if idx == 0 {
 				moveTo(p)

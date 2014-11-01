@@ -84,6 +84,7 @@ func main() {
 	if *optBogusMove && !*noOpt {
 		m.OptBogusMoves()
 	}
+
 	if *optLiftSpeed && !*noOpt {
 		m.OptLiftSpeed()
 	}

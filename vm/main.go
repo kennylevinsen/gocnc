@@ -336,7 +336,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	_, hasZ := stmt['Z']
 	if hasX || hasY || hasZ {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			vm.approximateArc(stmt, 0.1, true)
+			vm.approximateArc(stmt, 0.002, true)
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
 			vm.positioning(stmt)
 		} else {

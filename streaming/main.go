@@ -69,10 +69,46 @@ func (s *Streamer) Stop() {
 	s.serialPort.Close()
 }
 
-func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) error {
-	defer close(progress)
-	for idx, block := range doc.Blocks {
-		_, err := s.writer.WriteString(block.Export(maxPrecision) + "\n")
+func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int) (err error) {
+	defer func() {
+		close(progress)
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
+
+	var length, okCnt int
+	list := make([]string, 0)
+
+	// handle results
+	handleRes := func(res Result) {
+		switch res.level {
+		case "error":
+			panic("Received error from CNC: " + res.message)
+		case "alarm":
+			panic("Received alarm from CNC: " + res.message)
+		case "info":
+			fmt.Printf("\nReceived info from CNC: %s\n", res.message)
+		default:
+			x := list[0]
+			list = list[1:]
+			length -= len(x)
+			progress <- okCnt
+			okCnt++
+		}
+	}
+
+	for _, block := range doc.Blocks {
+		x := block.Export(maxPrecision) + "\n"
+		length += len(x)
+		list = append(list, x)
+
+		// If Grbl is full...
+		for length > 127 {
+			handleRes(serialReader(s.reader))
+		}
+
+		_, err := s.writer.WriteString(x)
 		if err != nil {
 			return errors.New("\nError while sending data:" + fmt.Sprintf("%s", err))
 		}
@@ -80,18 +116,11 @@ func (s *Streamer) Send(doc *gcode.Document, maxPrecision int, progress chan int
 		if err != nil {
 			return errors.New("\nError while flushing writer:" + fmt.Sprintf("%s", err))
 		}
-
-		res := serialReader(s.reader)
-
-		switch res.level {
-		case "error":
-			return errors.New("Received error from CNC: " + res.message)
-		case "alarm":
-			return errors.New("Received alarm from CNC: " + res.message)
-		case "info":
-			fmt.Printf("\nReceived info from CNC: %s\n", res.message)
-		}
-		progress <- idx
 	}
+
+	for okCnt < len(doc.Blocks) {
+		handleRes(serialReader(s.reader))
+	}
+
 	return nil
 }

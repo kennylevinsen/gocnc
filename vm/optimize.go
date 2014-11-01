@@ -3,6 +3,7 @@ package vm
 import "math"
 import "errors"
 import "strconv"
+import "fmt"
 
 //
 // Ideas for other optimization steps:
@@ -15,7 +16,7 @@ import "strconv"
 //
 // Detects a previous drill, and uses rapid move to the previous known depth
 //
-func (vm *Machine) OptimizeDrills() {
+func (vm *Machine) OptDrillSpeed() {
 	var (
 		lastx, lasty, lastz float64
 		npos                []Position = make([]Position, 0)
@@ -67,9 +68,147 @@ func (vm *Machine) OptimizeDrills() {
 }
 
 //
+// Reduces moves between routing operations
+//
+func (vm *Machine) OptRouteGrouping() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
+
+	type Set []Position
+	var (
+		lastx, lasty, lastz float64
+		sets                []Set = make([]Set, 0)
+		curSet              Set   = make(Set, 0)
+		safetyHeight        float64
+	)
+
+	// Find grouped drills
+	for _, m := range vm.posStack {
+		if m.z != lastz && (m.x != lastx || m.y != lasty) {
+			panic("Complex z-motion detected")
+		}
+
+		if m.x == lastx && m.y == lasty {
+			if lastz >= 0 && m.z < 0 {
+				// Down move
+				curSet = append(curSet, m)
+			} else if lastz < 0 && m.z >= 0 {
+				// Up move - ignored in set
+				//curSet = append(curSet, m)
+				sets = append(sets, curSet)
+				curSet = make(Set, 0)
+			} else {
+				// Minor z-move
+				curSet = append(curSet, m)
+			}
+		} else {
+			// Regular move
+			curSet = append(curSet, m)
+		}
+
+		if m.z > safetyHeight {
+			safetyHeight = m.z
+		}
+		lastx, lasty, lastz = m.x, m.y, m.z
+	}
+
+	// If there was a final set without a proper lift
+	if len(curSet) == 1 {
+		p := curSet[0]
+		if p.z != safetyHeight || lastz != safetyHeight || p.x != 0 || p.y != 0 {
+			panic("Incomplete final drill set")
+		}
+	} else if len(curSet) > 0 {
+		panic("Incomplete final drill set")
+	}
+
+	var (
+		curX, curY, curZ float64 = 0, 0, 0
+		sortedSets       []Set   = make([]Set, 0)
+		selectedSet      int
+	)
+
+	// Stupid difference calculator
+	diffFromCur := func(pos Position) float64 {
+		x := math.Max(curX, pos.x) - math.Min(curX, pos.x)
+		y := math.Max(curY, pos.y) - math.Min(curY, pos.y)
+		z := math.Max(curZ, pos.z) - math.Min(curZ, pos.z)
+		return math.Sqrt(math.Pow(x, 2) + math.Pow(y, 2) + math.Pow(z, 2))
+	}
+
+	// Sort the sets after distance from current position
+	for len(sets) > 0 {
+		for idx, _ := range sets {
+			if selectedSet == -1 {
+				selectedSet = idx
+			} else {
+				diff := diffFromCur(sets[idx][0])
+				other := diffFromCur(sets[selectedSet][0])
+				if diff < other {
+					selectedSet = idx
+				}
+			}
+		}
+		curX, curY, curZ = sets[selectedSet][0].x, sets[selectedSet][0].y, sets[selectedSet][0].z
+		sortedSets = append(sortedSets, sets[selectedSet])
+		sets = append(sets[0:selectedSet], sets[selectedSet+1:]...)
+		selectedSet = -1
+	}
+
+	// Reconstruct new position stack from sorted sections
+	newPos := make([]Position, 0)
+	newPos = append(newPos, vm.posStack[0]) // The first null-move
+
+	addPos := func(pos Position) {
+		newPos = append(newPos, pos)
+	}
+
+	moveTo := func(pos Position) {
+		curPos := newPos[len(newPos)-1]
+		if curPos.x == pos.x && curPos.y == pos.y {
+			if pos.z == safetyHeight {
+				// Redundant lift
+				return
+			} else {
+				addPos(pos)
+			}
+		} else {
+			step1 := newPos[len(newPos)-1]
+			step1.z = safetyHeight
+			step2 := step1
+			step2.x, step2.y = pos.x, pos.y
+			step3 := step2
+			step3.z = pos.z
+
+			addPos(step1)
+			addPos(step2)
+			addPos(step3)
+		}
+
+	}
+
+	for _, m := range sortedSets {
+		for idx, p := range m {
+			if idx == 0 {
+				moveTo(p)
+			} else {
+				addPos(p)
+			}
+		}
+	}
+
+	vm.posStack = newPos
+
+	return nil
+}
+
+//
 // Uses rapid move for all Z-up only moves
 //
-func (vm *Machine) OptimizeLifts() {
+func (vm *Machine) OptLiftSpeed() {
 	var lastx, lasty, lastz float64
 	for idx, m := range vm.posStack {
 		if m.x == lastx && m.y == lasty && m.z > lastz {
@@ -83,7 +222,7 @@ func (vm *Machine) OptimizeLifts() {
 //
 // Kills redundant partial moves
 //
-func (vm *Machine) OptimizeMoves() {
+func (vm *Machine) OptBogusMoves() {
 	var (
 		xstate, ystate, zstate       float64
 		vecX, vecY, vecZ             float64

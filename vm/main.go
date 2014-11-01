@@ -46,6 +46,7 @@ type Statement map[rune]float64
 // State structs
 //
 
+// Constants for move modes
 const (
 	moveModeNone   = iota
 	moveModeRapid  = iota
@@ -54,17 +55,14 @@ const (
 	moveModeCCWArc = iota
 )
 
+// Constants for plane selection
 const (
 	planeXY = iota
 	planeXZ = iota
 	planeYZ = iota
 )
 
-const (
-	vmModeNone        = iota
-	vmModePositioning = iota
-)
-
+// Move state
 type State struct {
 	feedrate         float64
 	spindleSpeed     float64
@@ -75,19 +73,23 @@ type State struct {
 	mistCoolant      bool
 }
 
+// Position and state
 type Position struct {
 	state   State
 	x, y, z float64
 }
 
+// Machine state and settings
 type Machine struct {
-	state        State
-	metric       bool
-	absoluteMove bool
-	absoluteArc  bool
-	movePlane    int
-	completed    bool
-	posStack     []Position
+	state            State
+	metric           bool
+	absoluteMove     bool
+	absoluteArc      bool
+	movePlane        int
+	completed        bool
+	maxArcDeviation  float64
+	minArcLineLength float64
+	posStack         []Position
 }
 
 //
@@ -145,43 +147,44 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 	return newX, newY, newZ, newI, newJ, newK
 }
 
+// Adds a simple linear move
 func (vm *Machine) positioning(stmt Statement) {
 	newX, newY, newZ, _, _, _ := vm.calcPos(stmt)
 	vm.addPos(Position{vm.state, newX, newY, newZ})
 }
 
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) approximateArc(stmt Statement, maxDeviation float64, ignoreRadiusErrors bool) {
-	startPos := vm.curPos()
-	startX, startY, startZ := startPos.x, startPos.y, startPos.z
-	endX, endY, endZ, endI, endJ, endK := vm.calcPos(stmt)
+func (vm *Machine) approximateArc(stmt Statement) {
+	var (
+		startPos                           Position = vm.curPos()
+		endX, endY, endZ, endI, endJ, endK float64  = vm.calcPos(stmt)
+		s1, s2, s3, e1, e2, e3, c1, c2     float64
+		add                                func(x, y, z float64)
+		clockwise                          bool = (vm.state.moveMode == moveModeCWArc)
+	)
 
+	vm.state.moveMode = moveModeLinear
+
+	// Read the additional rotation parameter
 	P := 0.0
 	if pp, ok := stmt['P']; ok {
 		P = pp
 	}
 
-	clockwise := (vm.state.moveMode == moveModeCWArc)
-
-	vm.state.moveMode = moveModeLinear
-
-	var add func(x, y, z float64)
-
-	var s1, s2, s3, e1, e2, e3, c1, c2 float64
-
+	//  Flip coordinate system for working in other planes
 	switch vm.movePlane {
 	case planeXY:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startX, startY, startZ, endX, endY, endZ, endI, endJ
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.x, startPos.y, startPos.z, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
 		}
 	case planeXZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startZ, startX, startY, endZ, endX, endY, endK, endI
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.z, startPos.x, startPos.y, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': y, 'Y': z, 'Z': x})
 		}
 	case planeYZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startY, startZ, startX, endY, endZ, endX, endJ, endK
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.y, startPos.z, startPos.x, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
 			vm.positioning(Statement{'X': z, 'Y': x, 'Z': y})
 		}
@@ -194,12 +197,7 @@ func (vm *Machine) approximateArc(stmt Statement, maxDeviation float64, ignoreRa
 	}
 
 	if math.Abs((radius2-radius1)/radius1) > 0.01 {
-		if !ignoreRadiusErrors {
-			fmt.Printf("x: %f, y: %f, z: %f endX: %f endY: %f I: %f J: %f \n", s1, s2, s3, e1, e2, c1, c2)
-			panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
-		} else {
-			fmt.Printf("Warning: ignoring radius deviation of %f percent\n", math.Abs((radius2-radius1)/radius1)*100)
-		}
+		panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
 	}
 
 	theta1 := math.Atan2((s2 - c2), (s1 - c1))
@@ -218,14 +216,18 @@ func (vm *Machine) approximateArc(stmt Statement, maxDeviation float64, ignoreRa
 		angleDiff += P * 2 * math.Pi
 	}
 
-	//arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
-
 	steps := 1
-	if maxDeviation < radius1 {
-		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-maxDeviation/radius1)))))
+	if vm.maxArcDeviation < radius1 {
+		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.maxArcDeviation/radius1)))))
 	}
 
-	//steps := int(arcLen / pointDistance)
+	// Enforce a minimum line length
+	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
+	steps2 := int(arcLen / vm.minArcLineLength)
+
+	if steps > steps2 {
+		steps = steps2
+	}
 
 	angle := 0.0
 	for i := 0; i <= steps; i++ {
@@ -240,6 +242,7 @@ func (vm *Machine) approximateArc(stmt Statement, maxDeviation float64, ignoreRa
 //
 // Dispatch
 //
+
 func (vm *Machine) run(stmt Statement) (err error) {
 	if vm.completed {
 		// A stop had previously been issued
@@ -336,7 +339,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	_, hasZ := stmt['Z']
 	if hasX || hasY || hasZ {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
-			vm.approximateArc(stmt, 0.002, true)
+			vm.approximateArc(stmt)
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
 			vm.positioning(stmt)
 		} else {
@@ -355,20 +358,7 @@ func (vm *Machine) finalize() {
 	}
 }
 
-//
-// Initialize VM state
-//
-func (vm *Machine) Init() {
-	vm.posStack = append(vm.posStack, Position{})
-	vm.metric = true
-	vm.absoluteMove = true
-	vm.absoluteArc = false
-	vm.movePlane = planeXY
-}
-
-//
-// Process an AST
-//
+// Process AST
 func (vm *Machine) Process(doc *gcode.Document) (err error) {
 	for _, b := range doc.Blocks {
 		if b.BlockDelete {
@@ -387,4 +377,15 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 	}
 	vm.finalize()
 	return
+}
+
+// Initialize the VM
+func (vm *Machine) Init(maxArcDeviation, minArcLineLength float64) {
+	vm.posStack = append(vm.posStack, Position{})
+	vm.metric = true
+	vm.absoluteMove = true
+	vm.absoluteArc = false
+	vm.movePlane = planeXY
+	vm.maxArcDeviation = maxArcDeviation
+	vm.minArcLineLength = minArcLineLength
 }

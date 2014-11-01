@@ -23,7 +23,9 @@ var (
 	optLiftSpeed     = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
 	optDrillSpeed    = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
 	optRouteGrouping = flag.Bool("optroute", true, "Optimize path to groups of routing moves")
-	precision        = flag.Int("precision", 5, "Precision to use for exported gcode")
+	precision        = flag.Int("precision", 4, "Precision to use for exported gcode")
+	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc")
+	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length")
 	feedLimit        = flag.Float64("feedlimit", -1, "Maximum feedrate")
 	safetyHeight     = flag.Float64("safetyheight", -1, "Enforce safety height")
 	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
@@ -39,11 +41,13 @@ func main() {
 
 	if *inputFile == "" {
 		fmt.Fprintf(os.Stderr, "Error: No file provided\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
 		fmt.Fprintf(os.Stderr, "Error: No output location provided\n")
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -59,7 +63,7 @@ func main() {
 
 	// Run through the VM
 	var m vm.Machine
-	m.Init()
+	m.Init(*maxArcDeviation, *minArcLineLength)
 
 	if err := m.Process(document); err != nil {
 		fmt.Fprintf(os.Stderr, "VM failed: %s\n", err)

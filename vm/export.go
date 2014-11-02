@@ -12,7 +12,7 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 	var (
 		lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ         float64
 		spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
-		lastMoveMode                                                float64 = -1
+		lastMoveMode, lastFeedMode                                  float64 = -1, -1
 		doc                                                         gcode.Document
 	)
 
@@ -33,7 +33,7 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 
 	for _, pos := range vm.posStack {
 		s := pos.state
-		var moveMode float64
+		var moveMode, feedMode float64
 
 		// fetch move mode
 		switch s.moveMode {
@@ -45,6 +45,16 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 			moveMode = 1
 		default:
 			return nil, errors.New("Cannot export arcs")
+		}
+
+		// fetch feed mode
+		switch s.feedMode {
+		case feedModeInvTime:
+			feedMode = 93
+		case feedModeUnitsMin:
+			feedMode = 94
+		case feedModeUnitsRev:
+			feedMode = 95
 		}
 
 		// handle spindle
@@ -78,6 +88,13 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 				mistCoolant = true
 			}
 			lastMoveMode = -1 // M-codes clear stuff...
+		}
+
+		// handle feedrate mode
+		if feedMode != lastFeedMode {
+			shortBlock(&gcode.Word{'G', feedMode})
+			lastFeedMode = feedMode
+			lastFeedrate = -1 // Clears feedrate
 		}
 
 		// handle feedrate and spindle speed

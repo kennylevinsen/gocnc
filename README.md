@@ -28,6 +28,10 @@ A usage example:
 
       ./gocnc --input ~/gcode.nc --device /dev/tty.usbmodem1441
 
+Or if you don't want any optimizations:
+
+      ./gocnc --input ~/gcode.nc --device /dev.tty.usbmodem1441 --noopt
+
 Detailed description
 ====
 
@@ -67,3 +71,11 @@ that they don't have to worry about that headache.
 
 In the future, more functionality will be soft-implemented, such as peck drilling cycle, etc.
 
+Notes
+====
+
+Route grouping is experimental. If it does not work correctly, please file a bug with the gcode.
+It can be disabled by using "--optroute=false"
+
+gocnc currently use a fork of goserial, as goserial handles a lot of things poorly. When my patches
+reach mainline, it will be reverting to using the standard variant.

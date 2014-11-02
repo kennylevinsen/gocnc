@@ -67,11 +67,15 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 				(mistCoolant == true && s.mistCoolant == false) {
 				// We can only disable both coolants simultaneously, so kill it and reenable one if needed
 				shortBlock(&gcode.Word{'M', 9})
+				mistCoolant, floodCoolant = false, false
 			}
 			if s.floodCoolant {
 				shortBlock(&gcode.Word{'M', 8})
+				floodCoolant = true
+
 			} else if s.mistCoolant {
 				shortBlock(&gcode.Word{'M', 7})
+				mistCoolant = true
 			}
 			lastMoveMode = -1 // M-codes clear stuff...
 		}

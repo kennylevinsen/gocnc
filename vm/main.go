@@ -53,7 +53,60 @@ import "errors"
 //   Incremental axes
 //   A, B, C axes
 
-type Statement map[rune]float64
+type Statement []*gcode.Word
+
+func (stmt Statement) get(address rune) (res float64, err error) {
+	found := false
+	for _, m := range stmt {
+		if m.Address == address {
+			if found {
+				return res, errors.New(fmt.Sprintf("Multiple instances of address '%c' in block", address))
+			}
+			found = true
+			res = m.Command
+		}
+	}
+	if !found {
+		return res, errors.New(fmt.Sprintf("'%c' not found in block", address))
+	}
+	return res, nil
+}
+
+func (stmt Statement) getDefault(address rune, def float64) (res float64) {
+	res, err := stmt.get(address)
+	if err == nil {
+		return def
+	}
+	return res
+}
+
+func (stmt Statement) getAll(address rune) (res []float64) {
+	for _, m := range stmt {
+		if m.Address == address {
+			res = append(res, m.Command)
+		}
+	}
+	return res
+}
+
+func (stmt Statement) includes(addresses ...rune) (res bool) {
+	for _, m := range addresses {
+		_, err := stmt.get(m)
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (stmt Statement) hasWord(address rune, command float64) (res bool) {
+	for _, m := range stmt {
+		if m.Address == address && m.Command == command {
+			return true
+		}
+	}
+	return false
+}
 
 //
 // State structs
@@ -123,29 +176,29 @@ func (vm *Machine) addPos(pos Position) {
 // Calculates the absolute position of the given statement, including optional I, J, K parameters
 func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
-	var ok bool
+	var err error
 
-	if newX, ok = stmt['X']; !ok {
+	if newX, err = stmt.get('X'); err != nil {
 		newX = pos.x
 	} else if !vm.metric {
 		newX *= 25.4
 	}
 
-	if newY, ok = stmt['Y']; !ok {
+	if newY, err = stmt.get('Y'); err != nil {
 		newY = pos.y
 	} else if !vm.metric {
 		newY *= 25.4
 	}
 
-	if newZ, ok = stmt['Z']; !ok {
+	if newZ, err = stmt.get('Z'); err != nil {
 		newZ = pos.z
 	} else if !vm.metric {
 		newZ *= 25.4
 	}
 
-	newI = stmt['I']
-	newJ = stmt['J']
-	newK = stmt['K']
+	newI = stmt.getDefault('I', 0)
+	newJ = stmt.getDefault('J', 0)
+	newK = stmt.getDefault('K', 0)
 
 	if !vm.metric {
 		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
@@ -181,7 +234,7 @@ func (vm *Machine) approximateArc(stmt Statement) {
 
 	// Read the additional rotation parameter
 	P := 0.0
-	if pp, ok := stmt['P']; ok {
+	if pp, err := stmt.get('P'); err == nil {
 		P = pp
 	}
 
@@ -190,17 +243,21 @@ func (vm *Machine) approximateArc(stmt Statement) {
 	case planeXY:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.x, startPos.y, startPos.z, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
-			vm.positioning(Statement{'X': x, 'Y': y, 'Z': z})
+			wx, wy, wz := gcode.Word{'X', x}, gcode.Word{'Y', y}, gcode.Word{'Z', z}
+			vm.positioning(Statement{&wx, &wy, &wz})
 		}
 	case planeXZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.z, startPos.x, startPos.y, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
-			vm.positioning(Statement{'X': y, 'Y': z, 'Z': x})
+			wx, wy, wz := gcode.Word{'X', y}, gcode.Word{'Y', z}, gcode.Word{'Z', x}
+			vm.positioning(Statement{&wx, &wy, &wz})
+
 		}
 	case planeYZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.y, startPos.z, startPos.x, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
-			vm.positioning(Statement{'X': z, 'Y': x, 'Z': y})
+			wx, wy, wz := gcode.Word{'X', z}, gcode.Word{'Y', x}, gcode.Word{'Z', y}
+			vm.positioning(Statement{&wx, &wy, &wz})
 		}
 	}
 
@@ -270,7 +327,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	}()
 
 	// G-codes
-	if g, ok := stmt['G']; ok {
+	for _, g := range stmt.getAll('G') {
 		switch g {
 		case 0:
 			vm.state.moveMode = moveModeRapid
@@ -304,8 +361,8 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	}
 
 	// M-codes
-	if g, ok := stmt['M']; ok {
-		switch g {
+	for _, m := range stmt.getAll('M') {
+		switch m {
 		case 2:
 			vm.completed = true
 		case 3:
@@ -329,29 +386,27 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	}
 
 	// F-codes
-	if g, ok := stmt['F']; ok {
+	for _, f := range stmt.getAll('F') {
 		if !vm.metric {
-			g *= 25.4
+			f *= 25.4
 		}
-		if g <= 0 {
+		if f <= 0 {
 			return errors.New("Feedrate must be greater than zero")
 		}
-		vm.state.feedrate = g
+		vm.state.feedrate = f
 	}
 
 	// S-codes
-	if g, ok := stmt['S']; ok {
-		if g < 0 {
+	for _, s := range stmt.getAll('S') {
+		if s < 0 {
 			return errors.New("Spindle speed must be greater than or equal to zero")
 		}
-		vm.state.spindleSpeed = g
+		vm.state.spindleSpeed = s
 	}
 
 	// X, Y, Z, I, J, K, P
-	_, hasX := stmt['X']
-	_, hasY := stmt['Y']
-	_, hasZ := stmt['Z']
-	if hasX || hasY || hasZ {
+	hasPositioning := stmt.includes('X', 'Y', 'Z')
+	if hasPositioning {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
 			vm.approximateArc(stmt)
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
@@ -379,10 +434,10 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 			continue
 		}
 
-		stmt := make(Statement)
+		stmt := make(Statement, 0)
 		for _, n := range b.Nodes {
 			if word, ok := n.(*gcode.Word); ok {
-				stmt[word.Address] = word.Command
+				stmt = append(stmt, word)
 			}
 		}
 		if err := vm.run(stmt); err != nil {

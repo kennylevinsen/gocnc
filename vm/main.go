@@ -40,6 +40,19 @@ import "errors"
 //   X, Y, Z - cartesian movement
 //   I, J, K - arc center definition
 
+//
+// TODO
+//
+//   Handle multiple G/M codes on the same line (slice of pairs instead of map)
+//   Split G/M handling out of the run function
+//   Handle G/M-code priority properly
+//   Better comments
+//   Implement various canned cycles
+//   Variables (basic support?)
+//   Subroutines
+//   Incremental axes
+//   A, B, C axes
+
 type Statement map[rune]float64
 
 //
@@ -89,6 +102,7 @@ type Machine struct {
 	completed        bool
 	maxArcDeviation  float64
 	minArcLineLength float64
+	tolerance        float64
 	posStack         []Position
 }
 
@@ -380,7 +394,8 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 }
 
 // Initialize the VM
-func (vm *Machine) Init(maxArcDeviation, minArcLineLength float64) {
+// Suggested values are: Init(0.002, 0.01, 0.001)
+func (vm *Machine) Init(maxArcDeviation, minArcLineLength, tolerance float64) {
 	vm.posStack = append(vm.posStack, Position{})
 	vm.metric = true
 	vm.absoluteMove = true
@@ -388,4 +403,5 @@ func (vm *Machine) Init(maxArcDeviation, minArcLineLength float64) {
 	vm.movePlane = planeXY
 	vm.maxArcDeviation = maxArcDeviation
 	vm.minArcLineLength = minArcLineLength
+	vm.tolerance = tolerance
 }

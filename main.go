@@ -26,6 +26,7 @@ var (
 	precision        = flag.Int("precision", 4, "Precision to use for exported gcode")
 	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc")
 	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length")
+	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some optimization step comparisons")
 	feedLimit        = flag.Float64("feedlimit", -1, "Maximum feedrate")
 	safetyHeight     = flag.Float64("safetyheight", -1, "Enforce safety height")
 	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
@@ -63,7 +64,7 @@ func main() {
 
 	// Run through the VM
 	var m vm.Machine
-	m.Init(*maxArcDeviation, *minArcLineLength)
+	m.Init(*maxArcDeviation, *minArcLineLength, *tolerance)
 
 	if err := m.Process(document); err != nil {
 		fmt.Fprintf(os.Stderr, "VM failed: %s\n", err)

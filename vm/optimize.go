@@ -13,9 +13,9 @@ import "fmt"
 //      less than a certain minimum angle
 //
 
-//
 // Detects a previous drill, and uses rapid move to the previous known depth
-//
+// Scans through all Z-descent moves, logs its height, and ensures that any future move
+// at that location will use moveModeRapid to go to the deepest previous known Z-height.
 func (vm *Machine) OptDrillSpeed() {
 	var (
 		lastx, lasty, lastz float64
@@ -67,9 +67,13 @@ func (vm *Machine) OptDrillSpeed() {
 	vm.posStack = npos
 }
 
-//
-// Reduces moves between routing operations
-//
+// Reduces moves between routing operations.
+// Scans through position stack, grouping moves that move from >= Z0 to < Z0.
+// These moves are then sorted after closest to previous position, starting at X0 Y0,
+// and moves to groups recalculated as they are inserted in a new stack.
+// This optimization pass bails if the Z axis is moved simultaneously with any other axis,
+// or the input ends with the drill below Z0, in order to play it safe.
+// This pass is new, and therefore slightly experimental.
 func (vm *Machine) OptRouteGrouping() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -83,37 +87,34 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		sets                []Set = make([]Set, 0)
 		curSet              Set   = make(Set, 0)
 		safetyHeight        float64
-		skipInitialMove     bool = false
+		sequenceStarted     bool = false
 	)
 
 	// Find grouped drills
-	for idx, m := range vm.posStack {
+	for _, m := range vm.posStack {
 		if m.z != lastz && (m.x != lastx || m.y != lasty) {
 			panic("Complex z-motion detected")
-		}
-
-		// The first element is a null-move, so we skip to the second
-		if idx == 1 && m.x == 0 && m.y == 0 && m.z > 0 {
-			skipInitialMove = true
 		}
 
 		if m.x == lastx && m.y == lasty {
 			if lastz >= 0 && m.z < 0 {
 				// Down move
-				//curSet = append(curSet, m)
+				sequenceStarted = true
+				curSet = append(curSet, m)
 			} else if lastz < 0 && m.z >= 0 {
 				// Up move - ignored in set
 				//curSet = append(curSet, m)
-				if !skipInitialMove {
+				if sequenceStarted {
 					sets = append(sets, curSet)
 				}
 				curSet = make(Set, 0)
-				skipInitialMove = false
 				goto updateLast // Skip append
 			}
 		}
-		// Regular move
-		curSet = append(curSet, m)
+		if sequenceStarted {
+			// Regular move
+			curSet = append(curSet, m)
+		}
 
 	updateLast:
 		if m.z > safetyHeight {
@@ -175,17 +176,25 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 
 	moveTo := func(pos Position) {
 		curPos := newPos[len(newPos)-1]
-		if curPos.x == pos.x && curPos.y == pos.y {
+
+		// Check if we should go to safety-height before moving
+		if math.Abs(curPos.x-pos.x) < vm.tolerance && math.Abs(curPos.y-pos.y) < vm.tolerance {
+			if curPos.x != pos.x || curPos.y != pos.y {
+				// If we're not 100% precise...
+				step1 := curPos
+				step1.state.moveMode = moveModeLinear
+				step1.x = pos.x
+				step1.y = pos.y
+				addPos(step1)
+			}
 			if pos.z == safetyHeight {
 				// Redundant lift
 				return
 			} else {
-				fmt.Printf("?!\n")
 				addPos(pos)
 			}
 		} else {
-			fmt.Printf("Damn! X1 %f, X2 %f, Y1 %f, Y2 %f\n", pos.x, curPos.x, pos.y, curPos.y)
-			step1 := newPos[len(newPos)-1]
+			step1 := curPos
 			step1.z = safetyHeight
 			step1.state.moveMode = moveModeRapid
 			step2 := step1
@@ -201,10 +210,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 
 	}
 
-	for idx, m := range sortedSets {
-		if idx < 8 || idx > 9 {
-			continue
-		}
+	for _, m := range sortedSets {
 		for idx, p := range m {
 			if idx == 0 {
 				moveTo(p)
@@ -219,9 +225,9 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 	return nil
 }
 
-//
-// Uses rapid move for all Z-up only moves
-//
+// Uses rapid move for all Z-up only moves.
+// Scans all positions for moves that only change the z-axis in a positive direction,
+// and sets the moveMode to moveModeRapid.
 func (vm *Machine) OptLiftSpeed() {
 	var lastx, lasty, lastz float64
 	for idx, m := range vm.posStack {
@@ -233,9 +239,8 @@ func (vm *Machine) OptLiftSpeed() {
 	}
 }
 
-//
-// Kills redundant partial moves
-//
+// Kills redundant partial moves.
+// Calculates the unit-vector, and kills all incremental moves between A and B.
 func (vm *Machine) OptBogusMoves() {
 	var (
 		xstate, ystate, zstate       float64
@@ -272,9 +277,7 @@ func (vm *Machine) OptBogusMoves() {
 	vm.posStack = npos
 }
 
-//
-// Limit feedrate
-//
+// Limit feedrate.
 func (vm *Machine) LimitFeedrate(feed float64) {
 	for idx, m := range vm.posStack {
 		if m.state.feedrate > feed {
@@ -283,9 +286,9 @@ func (vm *Machine) LimitFeedrate(feed float64) {
 	}
 }
 
-//
-// Set safety-height
-//
+// Set safety-height.
+// Scans for the highest position on the Y axis, and afterwards replaces all instances
+// of this position with the requested height.
 func (vm *Machine) SetSafetyHeight(height float64) error {
 	// Ensure we detected the highest point in the script - we don't want any collisions
 
@@ -315,9 +318,8 @@ func (vm *Machine) SetSafetyHeight(height float64) error {
 	return nil
 }
 
-//
-// Ensure return to X0 Y0 Z0
-//
+// Ensure return to X0 Y0 Z0.
+// Simply adds a what is necessary to move back to X0 Y0 Z0.
 func (vm *Machine) Return() {
 	var maxz float64
 	for _, m := range vm.posStack {

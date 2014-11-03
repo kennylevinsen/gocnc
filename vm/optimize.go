@@ -87,6 +87,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		sets                []Set = make([]Set, 0)
 		curSet              Set   = make(Set, 0)
 		safetyHeight        float64
+		drillSpeed          float64
 		sequenceStarted     bool = false
 	)
 
@@ -101,6 +102,14 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 				// Down move
 				sequenceStarted = true
 				curSet = append(curSet, m)
+
+				// Set drill feedrate
+				if m.state.moveMode == moveModeLinear && m.state.feedrate > drillSpeed {
+					if drillSpeed != 0 {
+						panic("Multiple drill feedrates detected")
+					}
+					drillSpeed = m.state.feedrate
+				}
 			} else if lastz < 0 && m.z >= 0 {
 				// Up move - ignored in set
 				//curSet = append(curSet, m)
@@ -121,6 +130,12 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 			safetyHeight = m.z
 		}
 		lastx, lasty, lastz = m.x, m.y, m.z
+	}
+
+	if safetyHeight == 0 {
+		panic("Unable to detect safety height")
+	} else if drillSpeed == 0 {
+		panic("Unable to detect drill feedrate")
 	}
 
 	// If there was a final set without a proper lift
@@ -202,6 +217,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 			step3 := step2
 			step3.z = pos.z
 			step3.state.moveMode = moveModeLinear
+			step3.state.feedrate = drillSpeed
 
 			addPos(step1)
 			addPos(step2)
@@ -283,6 +299,22 @@ func (vm *Machine) LimitFeedrate(feed float64) {
 		if m.state.feedrate > feed {
 			vm.posStack[idx].state.feedrate = feed
 		}
+	}
+}
+
+// Increase feedrate
+func (vm *Machine) FeedrateMultiplier(feedMultiplier float64) {
+	for idx, _ := range vm.posStack {
+		vm.posStack[idx].state.feedrate *= feedMultiplier
+	}
+}
+
+// Enforce spindle mode
+func (vm *Machine) EnforceSpindle(enabled, clockwise bool, speed float64) {
+	for idx, _ := range vm.posStack {
+		vm.posStack[idx].state.spindleSpeed = speed
+		vm.posStack[idx].state.spindleEnabled = enabled
+		vm.posStack[idx].state.spindleClockwise = clockwise
 	}
 }
 

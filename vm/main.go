@@ -139,16 +139,26 @@ const (
 	feedModeInvTime  = iota
 )
 
+// Constants for cutter compensation mode
+const (
+	cutCompModeNone  = iota
+	cutCompModeOuter = iota
+	cutCompModeInner = iota
+)
+
 // Move state
 type State struct {
-	feedrate         float64
-	spindleSpeed     float64
-	moveMode         int
-	feedMode         int
-	spindleEnabled   bool
-	spindleClockwise bool
-	floodCoolant     bool
-	mistCoolant      bool
+	feedrate           float64
+	spindleSpeed       float64
+	moveMode           int
+	feedMode           int
+	spindleEnabled     bool
+	spindleClockwise   bool
+	floodCoolant       bool
+	mistCoolant        bool
+	tool               int
+	nextTool           int
+	cutterCompensation int
 }
 
 // Position and state
@@ -208,6 +218,12 @@ func (vm *Machine) run(stmt Statement) (err error) {
 			vm.metric = false
 		case 21:
 			vm.metric = true
+		case 40:
+			vm.state.cutterCompensation = cutCompModeNone
+		case 41:
+			vm.state.cutterCompensation = cutCompModeOuter
+		case 42:
+			vm.state.cutterCompensation = cutCompModeInner
 		case 80:
 			vm.state.moveMode = moveModeNone
 		case 90:
@@ -224,7 +240,16 @@ func (vm *Machine) run(stmt Statement) (err error) {
 			vm.state.feedMode = feedModeUnitsMin
 		case 95:
 			vm.state.feedMode = feedModeUnitsRev
+		default:
+			panic(fmt.Sprintf("G%f not supported", g))
 		}
+	}
+
+	for _, t := range stmt.getAll('T') {
+		if t < 0 {
+			panic("T-word (tool select) must be non-negative")
+		}
+		vm.state.nextTool = int(t)
 	}
 
 	// M-codes
@@ -240,6 +265,8 @@ func (vm *Machine) run(stmt Statement) (err error) {
 			vm.state.spindleClockwise = false
 		case 5:
 			vm.state.spindleEnabled = false
+		case 6:
+			vm.state.tool = vm.state.nextTool
 		case 7:
 			vm.state.mistCoolant = true
 		case 8:
@@ -249,6 +276,8 @@ func (vm *Machine) run(stmt Statement) (err error) {
 			vm.state.floodCoolant = false
 		case 30:
 			vm.completed = true
+		default:
+			panic(fmt.Sprintf("M%.1f not supported", m))
 		}
 	}
 
@@ -258,7 +287,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 			f *= 25.4
 		}
 		if f <= 0 {
-			return errors.New("Feedrate must be greater than zero")
+			panic("Feedrate must be greater than zero")
 		}
 		vm.state.feedrate = f
 	}
@@ -266,7 +295,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	// S-codes
 	for _, s := range stmt.getAll('S') {
 		if s < 0 {
-			return errors.New("Spindle speed must be greater than or equal to zero")
+			panic("Spindle speed must be greater than or equal to zero")
 		}
 		vm.state.spindleSpeed = s
 	}
@@ -279,7 +308,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
 			vm.positioning(stmt)
 		} else {
-			return errors.New("Move attempted without an active move mode")
+			panic("Move attempted without an active move mode")
 		}
 	}
 

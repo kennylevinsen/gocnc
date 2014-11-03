@@ -8,32 +8,45 @@ import "fmt"
 // Export machine code
 //
 
-func (vm *Machine) Export() (*gcode.Document, error) {
+func (vm *Machine) Export() (res *gcode.Document, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
 	var (
 		lastFeedrate, lastSpindleSpeed, lastX, lastY, lastZ         float64
 		spindleEnabled, spindleClockwise, mistCoolant, floodCoolant bool
-		lastMoveMode, lastFeedMode                                  float64 = -1, -1
+		lastMoveMode, lastFeedMode, lastCutCompMode                 float64 = -1, -1, -1
+		lastTool                                                    int
 		doc                                                         gcode.Document
 	)
 
-	shortBlock := func(n gcode.Node) {
+	shortBlockDesc := func(desc string, ns ...gcode.Node) {
 		var block gcode.Block
-		block.AppendNode(n)
+		block.Description = desc
+		for _, n := range ns {
+			block.AppendNode(n)
+		}
 		doc.AppendBlock(block)
 	}
 
-	shortBlock(&gcode.Comment{"Exported by gocnc/vm", false})
-
-	var headerBlock gcode.Block
-	headerBlock.AppendNode(&gcode.Word{'G', 21})
-	//	headerBlock.AppendNode(&gcode.Word{'G', 40})
-	headerBlock.AppendNode(&gcode.Word{'G', 90})
-	headerBlock.AppendNode(&gcode.Word{'G', 94})
-	doc.AppendBlock(headerBlock)
+	shortBlockDesc("comment", &gcode.Comment{"Exported by gocnc/vm", false})
+	shortBlockDesc("header", &gcode.Word{'G', 21}, &gcode.Word{'G', 90})
 
 	for _, pos := range vm.posStack {
 		s := pos.state
-		var moveMode, feedMode float64
+		var moveMode, feedMode, cutCompMode float64
+
+		// fetch cutter compensation mode
+		switch s.cutterCompensation {
+		case cutCompModeNone:
+			cutCompMode = 40
+		case cutCompModeOuter:
+			cutCompMode = 41
+		case cutCompModeInner:
+			cutCompMode = 42
+		}
 
 		// fetch move mode
 		switch s.moveMode {
@@ -44,7 +57,7 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 		case moveModeLinear:
 			moveMode = 1
 		default:
-			return nil, errors.New("Cannot export arcs")
+			panic("Cannot export arcs")
 		}
 
 		// fetch feed mode
@@ -57,14 +70,20 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 			feedMode = 95
 		}
 
+		// select tool
+		if s.tool != lastTool {
+			shortBlockDesc("tool-change", &gcode.Word{'M', 6}, &gcode.Word{'T', float64(s.tool)})
+			lastTool = s.tool
+		}
+
 		// handle spindle
 		if s.spindleEnabled != spindleEnabled || s.spindleClockwise != spindleClockwise {
 			if s.spindleEnabled && s.spindleClockwise {
-				shortBlock(&gcode.Word{'M', 3})
+				shortBlockDesc("spindle-clockwise", &gcode.Word{'M', 3})
 			} else if s.spindleEnabled && !s.spindleClockwise {
-				shortBlock(&gcode.Word{'M', 4})
+				shortBlockDesc("spindle-cclockwise", &gcode.Word{'M', 4})
 			} else if !s.spindleEnabled {
-				shortBlock(&gcode.Word{'M', 5})
+				shortBlockDesc("spindle-disabled", &gcode.Word{'M', 5})
 			}
 			spindleEnabled, spindleClockwise = s.spindleEnabled, s.spindleClockwise
 			lastMoveMode = -1 // M-codes clear stuff...
@@ -76,15 +95,15 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 			if (floodCoolant == true && s.floodCoolant == false) ||
 				(mistCoolant == true && s.mistCoolant == false) {
 				// We can only disable both coolants simultaneously, so kill it and reenable one if needed
-				shortBlock(&gcode.Word{'M', 9})
+				shortBlockDesc("disable-coolant", &gcode.Word{'M', 9})
 				mistCoolant, floodCoolant = false, false
 			}
 			if s.floodCoolant {
-				shortBlock(&gcode.Word{'M', 8})
+				shortBlockDesc("flood-coolant", &gcode.Word{'M', 8})
 				floodCoolant = true
 
 			} else if s.mistCoolant {
-				shortBlock(&gcode.Word{'M', 7})
+				shortBlockDesc("mist-coolant", &gcode.Word{'M', 7})
 				mistCoolant = true
 			}
 			lastMoveMode = -1 // M-codes clear stuff...
@@ -92,7 +111,7 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 
 		// handle feedrate mode
 		if feedMode != lastFeedMode {
-			shortBlock(&gcode.Word{'G', feedMode})
+			shortBlockDesc("feed-mode", &gcode.Word{'G', feedMode})
 			lastFeedMode = feedMode
 			lastFeedrate = -1 // Clears feedrate
 		}
@@ -100,16 +119,27 @@ func (vm *Machine) Export() (*gcode.Document, error) {
 		// handle feedrate and spindle speed
 		if s.moveMode != moveModeRapid {
 			if s.feedrate != lastFeedrate {
-				shortBlock(&gcode.Word{'F', s.feedrate})
+				shortBlockDesc("feedrate", &gcode.Word{'F', s.feedrate})
 				lastFeedrate = s.feedrate
 			}
 			if s.spindleSpeed != lastSpindleSpeed {
-				shortBlock(&gcode.Word{'S', s.spindleSpeed})
+				shortBlockDesc("spindle-speed", &gcode.Word{'S', s.spindleSpeed})
 				lastSpindleSpeed = s.spindleSpeed
 			}
 		}
 
+		// handle cutter compensation
+		if cutCompMode != lastCutCompMode {
+			if cutCompMode == 40 {
+				shortBlockDesc("cutter-compensation-reset", &gcode.Word{'G', cutCompMode})
+			} else {
+				shortBlockDesc("cutter-compensation-set", &gcode.Word{'G', cutCompMode})
+			}
+			lastCutCompMode = cutCompMode
+		}
+
 		var moveBlock gcode.Block
+		moveBlock.Description = "move"
 
 		// handle move mode
 		if s.moveMode == moveModeCWArc || s.moveMode == moveModeCCWArc || moveMode != lastMoveMode {

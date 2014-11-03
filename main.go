@@ -28,6 +28,9 @@ var (
 	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length")
 	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some optimization step comparisons")
 	feedLimit        = flag.Float64("feedlimit", -1, "Maximum feedrate")
+	multiplyFeed     = flag.Float64("multiplyfeed", 0, "Feedrate multiplier (0 to disable)")
+	spindleCW        = flag.Float64("spindlecw", 0, "Force clockwise spindle speed")
+	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed")
 	safetyHeight     = flag.Float64("safetyheight", -1, "Enforce safety height")
 	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
 )
@@ -48,6 +51,12 @@ func main() {
 
 	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
 		fmt.Fprintf(os.Stderr, "Error: No output location provided\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if *spindleCW != 0 && *spindleCCW != 0 {
+		fmt.Fprintf(os.Stderr, "Error: Cannot force both clockwise and counter clockwise rotation\n")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -103,6 +112,16 @@ func main() {
 		m.LimitFeedrate(*feedLimit)
 	}
 
+	if *multiplyFeed != 0 {
+		m.FeedrateMultiplier(*multiplyFeed)
+	}
+
+	if *spindleCW != 0 {
+		m.EnforceSpindle(true, true, *spindleCW)
+	} else if *spindleCCW != 0 {
+		m.EnforceSpindle(true, false, *spindleCCW)
+	}
+
 	if *enforceReturn {
 		m.Return()
 	}
@@ -130,7 +149,13 @@ func main() {
 
 	if *device != "" {
 		startTime := time.Now()
-		var s streaming.Streamer
+		var s streaming.Streamer = &streaming.GrblStreamer{}
+
+		if err := s.Check(output); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Cannot stream to Grbl: %s\n", err)
+			os.Exit(4)
+		}
+
 		if err := s.Connect(*device); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Unable to connect to device: %s\n", err)
 			os.Exit(2)

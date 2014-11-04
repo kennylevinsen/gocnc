@@ -78,7 +78,7 @@ func (stmt Statement) get(address rune) (res float64, err error) {
 
 func (stmt Statement) getDefault(address rune, def float64) (res float64) {
 	res, err := stmt.get(address)
-	if err == nil {
+	if err != nil {
 		return def
 	}
 	return res

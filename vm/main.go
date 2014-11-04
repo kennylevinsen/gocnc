@@ -56,10 +56,81 @@ import "errors"
 //   Subroutines
 //   Incremental axes
 //   A, B, C axes
+//
+// State structs and constants
+//
 
-type Statement []*gcode.Word
+// Constants for move modes
+const (
+	MoveModeNone   = iota
+	MoveModeRapid  = iota
+	MoveModeLinear = iota
+	MoveModeCWArc  = iota
+	MoveModeCCWArc = iota
+)
 
-func (stmt Statement) get(address rune) (res float64, err error) {
+// Constants for plane selection
+const (
+	PlaneXY = iota
+	PlaneXZ = iota
+	PlaneYZ = iota
+)
+
+// Constants for feedrate mode
+const (
+	FeedModeUnitsMin = iota
+	FeedModeUnitsRev = iota
+	FeedModeInvTime  = iota
+)
+
+// Constants for cutter compensation mode
+const (
+	CutCompModeNone  = iota
+	CutCompModeOuter = iota
+	CutCompModeInner = iota
+)
+
+// Move state
+type State struct {
+	Feedrate           float64
+	SpindleSpeed       float64
+	MoveMode           int
+	FeedMode           int
+	SpindleEnabled     bool
+	SpindleClockwise   bool
+	FloodCoolant       bool
+	MistCoolant        bool
+	Tool               int
+	CutterCompensation int
+}
+
+// Position and state
+type Position struct {
+	State   State
+	X, Y, Z float64
+}
+
+// Machine state and settings
+type Machine struct {
+	State            State
+	Completed        bool
+	Metric           bool
+	AbsoluteMove     bool
+	AbsoluteArc      bool
+	MovePlane        int
+	NextTool         int
+	MaxArcDeviation  float64
+	MinArcLineLength float64
+	Tolerance        float64
+	Positions        []Position
+}
+
+//
+// Struct and helper functions to aid execution
+//
+type statement []*gcode.Word
+
+func (stmt statement) get(address rune) (res float64, err error) {
 	found := false
 	for _, m := range stmt {
 		if m.Address == address {
@@ -76,7 +147,7 @@ func (stmt Statement) get(address rune) (res float64, err error) {
 	return res, nil
 }
 
-func (stmt Statement) getDefault(address rune, def float64) (res float64) {
+func (stmt statement) getDefault(address rune, def float64) (res float64) {
 	res, err := stmt.get(address)
 	if err != nil {
 		return def
@@ -84,7 +155,7 @@ func (stmt Statement) getDefault(address rune, def float64) (res float64) {
 	return res
 }
 
-func (stmt Statement) getAll(address rune) (res []float64) {
+func (stmt statement) getAll(address rune) (res []float64) {
 	for _, m := range stmt {
 		if m.Address == address {
 			res = append(res, m.Command)
@@ -93,7 +164,7 @@ func (stmt Statement) getAll(address rune) (res []float64) {
 	return res
 }
 
-func (stmt Statement) includes(addresses ...rune) (res bool) {
+func (stmt statement) includes(addresses ...rune) (res bool) {
 	for _, m := range addresses {
 		_, err := stmt.get(m)
 		if err == nil {
@@ -103,7 +174,7 @@ func (stmt Statement) includes(addresses ...rune) (res bool) {
 	return false
 }
 
-func (stmt Statement) hasWord(address rune, command float64) (res bool) {
+func (stmt statement) hasWord(address rune, command float64) (res bool) {
 	for _, m := range stmt {
 		if m.Address == address && m.Command == command {
 			return true
@@ -113,80 +184,11 @@ func (stmt Statement) hasWord(address rune, command float64) (res bool) {
 }
 
 //
-// State structs and constants
-//
-
-// Constants for move modes
-const (
-	moveModeNone   = iota
-	moveModeRapid  = iota
-	moveModeLinear = iota
-	moveModeCWArc  = iota
-	moveModeCCWArc = iota
-)
-
-// Constants for plane selection
-const (
-	planeXY = iota
-	planeXZ = iota
-	planeYZ = iota
-)
-
-// Constants for feedrate mode
-const (
-	feedModeUnitsMin = iota
-	feedModeUnitsRev = iota
-	feedModeInvTime  = iota
-)
-
-// Constants for cutter compensation mode
-const (
-	cutCompModeNone  = iota
-	cutCompModeOuter = iota
-	cutCompModeInner = iota
-)
-
-// Move state
-type State struct {
-	feedrate           float64
-	spindleSpeed       float64
-	moveMode           int
-	feedMode           int
-	spindleEnabled     bool
-	spindleClockwise   bool
-	floodCoolant       bool
-	mistCoolant        bool
-	tool               int
-	nextTool           int
-	cutterCompensation int
-}
-
-// Position and state
-type Position struct {
-	state   State
-	x, y, z float64
-}
-
-// Machine state and settings
-type Machine struct {
-	state            State
-	completed        bool
-	metric           bool
-	absoluteMove     bool
-	absoluteArc      bool
-	movePlane        int
-	MaxArcDeviation  float64
-	MinArcLineLength float64
-	Tolerance        float64
-	Positions        []Position
-}
-
-//
 // Dispatch
 //
 
-func (vm *Machine) run(stmt Statement) (err error) {
-	if vm.completed {
+func (vm *Machine) run(stmt statement) (err error) {
+	if vm.Completed {
 		// A stop had previously been issued
 		return
 	}
@@ -201,45 +203,45 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	for _, g := range stmt.getAll('G') {
 		switch g {
 		case 0:
-			vm.state.moveMode = moveModeRapid
+			vm.State.MoveMode = MoveModeRapid
 		case 1:
-			vm.state.moveMode = moveModeLinear
+			vm.State.MoveMode = MoveModeLinear
 		case 2:
-			vm.state.moveMode = moveModeCWArc
+			vm.State.MoveMode = MoveModeCWArc
 		case 3:
-			vm.state.moveMode = moveModeCCWArc
+			vm.State.MoveMode = MoveModeCCWArc
 		case 17:
-			vm.movePlane = planeXY
+			vm.MovePlane = PlaneXY
 		case 18:
-			vm.movePlane = planeXZ
+			vm.MovePlane = PlaneXZ
 		case 19:
-			vm.movePlane = planeYZ
+			vm.MovePlane = PlaneYZ
 		case 20:
-			vm.metric = false
+			vm.Metric = false
 		case 21:
-			vm.metric = true
+			vm.Metric = true
 		case 40:
-			vm.state.cutterCompensation = cutCompModeNone
+			vm.State.CutterCompensation = CutCompModeNone
 		case 41:
-			vm.state.cutterCompensation = cutCompModeOuter
+			vm.State.CutterCompensation = CutCompModeOuter
 		case 42:
-			vm.state.cutterCompensation = cutCompModeInner
+			vm.State.CutterCompensation = CutCompModeInner
 		case 80:
-			vm.state.moveMode = moveModeNone
+			vm.State.MoveMode = MoveModeNone
 		case 90:
-			vm.absoluteMove = true
+			vm.AbsoluteMove = true
 		case 90.1:
-			vm.absoluteArc = true
+			vm.AbsoluteArc = true
 		case 91:
-			vm.absoluteMove = false
+			vm.AbsoluteMove = false
 		case 91.1:
-			vm.absoluteArc = false
+			vm.AbsoluteArc = false
 		case 93:
-			vm.state.feedMode = feedModeInvTime
+			vm.State.FeedMode = FeedModeInvTime
 		case 94:
-			vm.state.feedMode = feedModeUnitsMin
+			vm.State.FeedMode = FeedModeUnitsMin
 		case 95:
-			vm.state.feedMode = feedModeUnitsRev
+			vm.State.FeedMode = FeedModeUnitsRev
 		default:
 			panic(fmt.Sprintf("G%g not supported", g))
 		}
@@ -249,33 +251,33 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		if t < 0 {
 			panic("Tool must be non-negative")
 		}
-		vm.state.nextTool = int(t)
+		vm.NextTool = int(t)
 	}
 
 	// M-codes
 	for _, m := range stmt.getAll('M') {
 		switch m {
 		case 2:
-			vm.completed = true
+			vm.Completed = true
 		case 3:
-			vm.state.spindleEnabled = true
-			vm.state.spindleClockwise = true
+			vm.State.SpindleEnabled = true
+			vm.State.SpindleClockwise = true
 		case 4:
-			vm.state.spindleEnabled = true
-			vm.state.spindleClockwise = false
+			vm.State.SpindleEnabled = true
+			vm.State.SpindleClockwise = false
 		case 5:
-			vm.state.spindleEnabled = false
+			vm.State.SpindleEnabled = false
 		case 6:
-			vm.state.tool = vm.state.nextTool
+			vm.State.Tool = vm.NextTool
 		case 7:
-			vm.state.mistCoolant = true
+			vm.State.MistCoolant = true
 		case 8:
-			vm.state.floodCoolant = true
+			vm.State.FloodCoolant = true
 		case 9:
-			vm.state.mistCoolant = false
-			vm.state.floodCoolant = false
+			vm.State.MistCoolant = false
+			vm.State.FloodCoolant = false
 		case 30:
-			vm.completed = true
+			vm.Completed = true
 		default:
 			panic(fmt.Sprintf("M%g not supported", m))
 		}
@@ -283,13 +285,13 @@ func (vm *Machine) run(stmt Statement) (err error) {
 
 	// F-codes
 	for _, f := range stmt.getAll('F') {
-		if !vm.metric {
+		if !vm.Metric {
 			f *= 25.4
 		}
 		if f <= 0 {
 			panic("Feedrate must be greater than zero")
 		}
-		vm.state.feedrate = f
+		vm.State.Feedrate = f
 	}
 
 	// S-codes
@@ -297,7 +299,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		if s < 0 {
 			panic("Spindle speed must be greater than or equal to zero")
 		}
-		vm.state.spindleSpeed = s
+		vm.State.SpindleSpeed = s
 	}
 
 	if stmt.includes('A', 'B', 'C', 'U', 'V', 'W') {
@@ -305,9 +307,9 @@ func (vm *Machine) run(stmt Statement) (err error) {
 	}
 
 	if stmt.includes('X', 'Y', 'Z') {
-		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
+		if vm.State.MoveMode == MoveModeCWArc || vm.State.MoveMode == MoveModeCCWArc {
 			vm.approximateArc(stmt)
-		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
+		} else if vm.State.MoveMode == MoveModeLinear || vm.State.MoveMode == MoveModeRapid {
 			vm.positioning(stmt)
 		} else {
 			panic("Move attempted without an active move mode")
@@ -319,9 +321,9 @@ func (vm *Machine) run(stmt Statement) (err error) {
 
 // Ensure that machine state is correct after execution
 func (vm *Machine) finalize() {
-	if vm.state != vm.curPos().state {
-		vm.state.moveMode = moveModeNone
-		vm.addPos(Position{state: vm.state})
+	if vm.State != vm.curPos().State {
+		vm.State.MoveMode = MoveModeNone
+		vm.addPos(Position{State: vm.State})
 	}
 }
 
@@ -332,7 +334,7 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 			continue
 		}
 
-		stmt := make(Statement, 0)
+		stmt := make(statement, 0)
 		for _, n := range b.Nodes {
 			if word, ok := n.(*gcode.Word); ok {
 				stmt = append(stmt, word)
@@ -349,10 +351,10 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 // Initialize the VM to sane default values
 func (vm *Machine) Init() {
 	vm.Positions = append(vm.Positions, Position{})
-	vm.metric = true
-	vm.absoluteMove = true
-	vm.absoluteArc = false
-	vm.movePlane = planeXY
+	vm.Metric = true
+	vm.AbsoluteMove = true
+	vm.AbsoluteArc = false
+	vm.MovePlane = PlaneXY
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
 	vm.Tolerance = 0.001

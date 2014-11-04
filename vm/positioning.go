@@ -15,25 +15,25 @@ func (vm *Machine) addPos(pos Position) {
 }
 
 // Calculates the absolute position of the given statement, including optional I, J, K parameters
-func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK float64) {
+func (vm *Machine) calcPos(stmt statement) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
 	var err error
 
 	if newX, err = stmt.get('X'); err != nil {
-		newX = pos.x
-	} else if !vm.metric {
+		newX = pos.X
+	} else if !vm.Metric {
 		newX *= 25.4
 	}
 
 	if newY, err = stmt.get('Y'); err != nil {
-		newY = pos.y
-	} else if !vm.metric {
+		newY = pos.Y
+	} else if !vm.Metric {
 		newY *= 25.4
 	}
 
 	if newZ, err = stmt.get('Z'); err != nil {
-		newZ = pos.z
-	} else if !vm.metric {
+		newZ = pos.Z
+	} else if !vm.Metric {
 		newZ *= 25.4
 	}
 
@@ -41,37 +41,37 @@ func (vm *Machine) calcPos(stmt Statement) (newX, newY, newZ, newI, newJ, newK f
 	newJ = stmt.getDefault('J', 0)
 	newK = stmt.getDefault('K', 0)
 
-	if !vm.metric {
+	if !vm.Metric {
 		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
 	}
 
-	if !vm.absoluteMove {
-		newX, newY, newZ = pos.x+newX, pos.y+newY, pos.z+newZ
+	if !vm.AbsoluteMove {
+		newX, newY, newZ = pos.X+newX, pos.Y+newY, pos.Z+newZ
 	}
 
-	if !vm.absoluteArc {
-		newI, newJ, newK = pos.x+newI, pos.y+newJ, pos.z+newK
+	if !vm.AbsoluteArc {
+		newI, newJ, newK = pos.X+newI, pos.Y+newJ, pos.Z+newK
 	}
 	return newX, newY, newZ, newI, newJ, newK
 }
 
 // Adds a simple linear move
-func (vm *Machine) positioning(stmt Statement) {
+func (vm *Machine) positioning(stmt statement) {
 	newX, newY, newZ, _, _, _ := vm.calcPos(stmt)
-	vm.addPos(Position{vm.state, newX, newY, newZ})
+	vm.addPos(Position{vm.State, newX, newY, newZ})
 }
 
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) approximateArc(stmt Statement) {
+func (vm *Machine) approximateArc(stmt statement) {
 	var (
 		startPos                           Position = vm.curPos()
 		endX, endY, endZ, endI, endJ, endK float64  = vm.calcPos(stmt)
 		s1, s2, s3, e1, e2, e3, c1, c2, P  float64
 		add                                func(x, y, z float64)
-		clockwise                          bool = (vm.state.moveMode == moveModeCWArc)
+		clockwise                          bool = (vm.State.MoveMode == MoveModeCWArc)
 	)
 
-	vm.state.moveMode = moveModeLinear
+	vm.State.MoveMode = MoveModeLinear
 
 	// Read the additional rotation parameter
 	if pp, err := stmt.get('P'); err == nil {
@@ -79,25 +79,25 @@ func (vm *Machine) approximateArc(stmt Statement) {
 	}
 
 	//  Flip coordinate system for working in other planes
-	switch vm.movePlane {
-	case planeXY:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.x, startPos.y, startPos.z, endX, endY, endZ, endI, endJ
+	switch vm.MovePlane {
+	case PlaneXY:
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.X, startPos.Y, startPos.Z, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', x}, gcode.Word{'Y', y}, gcode.Word{'Z', z}
-			vm.positioning(Statement{&wx, &wy, &wz})
+			vm.positioning(statement{&wx, &wy, &wz})
 		}
-	case planeXZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.z, startPos.x, startPos.y, endZ, endX, endY, endK, endI
+	case PlaneXZ:
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Z, startPos.X, startPos.Y, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', y}, gcode.Word{'Y', z}, gcode.Word{'Z', x}
-			vm.positioning(Statement{&wx, &wy, &wz})
+			vm.positioning(statement{&wx, &wy, &wz})
 
 		}
-	case planeYZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.y, startPos.z, startPos.x, endY, endZ, endX, endJ, endK
+	case PlaneYZ:
+		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Y, startPos.Z, startPos.X, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', z}, gcode.Word{'Y', x}, gcode.Word{'Z', y}
-			vm.positioning(Statement{&wx, &wy, &wz})
+			vm.positioning(statement{&wx, &wy, &wz})
 		}
 	}
 

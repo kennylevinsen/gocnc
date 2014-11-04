@@ -66,7 +66,7 @@ func (vm *Machine) approximateArc(stmt Statement) {
 	var (
 		startPos                           Position = vm.curPos()
 		endX, endY, endZ, endI, endJ, endK float64  = vm.calcPos(stmt)
-		s1, s2, s3, e1, e2, e3, c1, c2     float64
+		s1, s2, s3, e1, e2, e3, c1, c2, P  float64
 		add                                func(x, y, z float64)
 		clockwise                          bool = (vm.state.moveMode == moveModeCWArc)
 	)
@@ -74,7 +74,6 @@ func (vm *Machine) approximateArc(stmt Statement) {
 	vm.state.moveMode = moveModeLinear
 
 	// Read the additional rotation parameter
-	P := 0.0
 	if pp, err := stmt.get('P'); err == nil {
 		P = pp
 	}

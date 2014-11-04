@@ -241,13 +241,13 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		case 95:
 			vm.state.feedMode = feedModeUnitsRev
 		default:
-			panic(fmt.Sprintf("G%f not supported", g))
+			panic(fmt.Sprintf("G%g not supported", g))
 		}
 	}
 
 	for _, t := range stmt.getAll('T') {
 		if t < 0 {
-			panic("T-word (tool select) must be non-negative")
+			panic("Tool must be non-negative")
 		}
 		vm.state.nextTool = int(t)
 	}
@@ -277,7 +277,7 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		case 30:
 			vm.completed = true
 		default:
-			panic(fmt.Sprintf("M%.1f not supported", m))
+			panic(fmt.Sprintf("M%g not supported", m))
 		}
 	}
 
@@ -300,9 +300,11 @@ func (vm *Machine) run(stmt Statement) (err error) {
 		vm.state.spindleSpeed = s
 	}
 
-	// X, Y, Z, I, J, K, P
-	hasPositioning := stmt.includes('X', 'Y', 'Z')
-	if hasPositioning {
+	if stmt.includes('A', 'B', 'C', 'U', 'V', 'W') {
+		panic("Only X, Y and Z axes are supported")
+	}
+
+	if stmt.includes('X', 'Y', 'Z') {
 		if vm.state.moveMode == moveModeCWArc || vm.state.moveMode == moveModeCCWArc {
 			vm.approximateArc(stmt)
 		} else if vm.state.moveMode == moveModeLinear || vm.state.moveMode == moveModeRapid {
@@ -325,7 +327,7 @@ func (vm *Machine) finalize() {
 
 // Process AST
 func (vm *Machine) Process(doc *gcode.Document) (err error) {
-	for _, b := range doc.Blocks {
+	for idx, b := range doc.Blocks {
 		if b.BlockDelete {
 			continue
 		}
@@ -337,7 +339,7 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 			}
 		}
 		if err := vm.run(stmt); err != nil {
-			return err
+			return errors.New(fmt.Sprintf("line %d: %s", idx+1, err))
 		}
 	}
 	vm.finalize()

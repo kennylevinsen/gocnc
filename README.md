@@ -73,4 +73,6 @@ Notes
 
 Route grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--optroute=false"
 
+gocnc does *not* honor modal group order, but simply performs all known commands on a line/block (And fails on unknown commands). Modal group handling might be relevant, but some components might be difficult to implement, as gocnc is designed to only update states if there is a spindle move to associate it with.
+
 gocnc currently use a fork of goserial, as goserial handles a lot of things poorly. When my patches reach mainline, it will be reverting to using the standard variant.

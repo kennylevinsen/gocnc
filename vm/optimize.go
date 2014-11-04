@@ -2,7 +2,6 @@ package vm
 
 import "math"
 import "errors"
-import "strconv"
 import "fmt"
 
 //
@@ -52,7 +51,7 @@ func (vm *Machine) OptDrillSpeed() {
 		}
 	}
 
-	for _, m := range vm.posStack {
+	for _, m := range vm.Positions {
 		if m.x == lastx && m.y == lasty && m.z < lastz && m.state.moveMode == moveModeLinear {
 			posn, poso, shouldinsert := fastDrill(m)
 			if shouldinsert {
@@ -64,7 +63,7 @@ func (vm *Machine) OptDrillSpeed() {
 		}
 		lastx, lasty, lastz = m.x, m.y, m.z
 	}
-	vm.posStack = npos
+	vm.Positions = npos
 }
 
 // Reduces moves between routing operations.
@@ -92,7 +91,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 	)
 
 	// Find grouped drills
-	for _, m := range vm.posStack {
+	for _, m := range vm.Positions {
 		if m.z != lastz && (m.x != lastx || m.y != lasty) {
 			panic("Complex z-motion detected")
 		}
@@ -183,7 +182,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 
 	// Reconstruct new position stack from sorted sections
 	newPos := make([]Position, 0)
-	newPos = append(newPos, vm.posStack[0]) // The first null-move
+	newPos = append(newPos, vm.Positions[0]) // The first null-move
 
 	addPos := func(pos Position) {
 		newPos = append(newPos, pos)
@@ -193,7 +192,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		curPos := newPos[len(newPos)-1]
 
 		// Check if we should go to safety-height before moving
-		if math.Abs(curPos.x-pos.x) < vm.tolerance && math.Abs(curPos.y-pos.y) < vm.tolerance {
+		if math.Abs(curPos.x-pos.x) < vm.Tolerance && math.Abs(curPos.y-pos.y) < vm.Tolerance {
 			if curPos.x != pos.x || curPos.y != pos.y {
 				// If we're not 100% precise...
 				step1 := curPos
@@ -236,7 +235,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		}
 	}
 
-	vm.posStack = newPos
+	vm.Positions = newPos
 
 	return nil
 }
@@ -246,10 +245,10 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 // and sets the moveMode to moveModeRapid.
 func (vm *Machine) OptLiftSpeed() {
 	var lastx, lasty, lastz float64
-	for idx, m := range vm.posStack {
+	for idx, m := range vm.Positions {
 		if m.x == lastx && m.y == lasty && m.z > lastz {
 			// We got a lift! Let's make it faster, shall we?
-			vm.posStack[idx].state.moveMode = moveModeRapid
+			vm.Positions[idx].state.moveMode = moveModeRapid
 		}
 		lastx, lasty, lastz = m.x, m.y, m.z
 	}
@@ -265,7 +264,7 @@ func (vm *Machine) OptBogusMoves() {
 		npos                         []Position = make([]Position, 0)
 	)
 
-	for _, m := range vm.posStack {
+	for _, m := range vm.Positions {
 		dx, dy, dz := m.x-xstate, m.y-ystate, m.z-zstate
 		xstate, ystate, zstate = m.x, m.y, m.z
 
@@ -290,106 +289,5 @@ func (vm *Machine) OptBogusMoves() {
 			lastvecX, lastvecY, lastvecZ = vecX, vecY, vecZ
 		}
 	}
-	vm.posStack = npos
-}
-
-// Limit feedrate.
-func (vm *Machine) LimitFeedrate(feed float64) {
-	for idx, m := range vm.posStack {
-		if m.state.feedrate > feed {
-			vm.posStack[idx].state.feedrate = feed
-		}
-	}
-}
-
-// Increase feedrate
-func (vm *Machine) FeedrateMultiplier(feedMultiplier float64) {
-	for idx, _ := range vm.posStack {
-		vm.posStack[idx].state.feedrate *= feedMultiplier
-	}
-}
-
-// Enforce spindle mode
-func (vm *Machine) EnforceSpindle(enabled, clockwise bool, speed float64) {
-	for idx, _ := range vm.posStack {
-		vm.posStack[idx].state.spindleSpeed = speed
-		vm.posStack[idx].state.spindleEnabled = enabled
-		vm.posStack[idx].state.spindleClockwise = clockwise
-	}
-}
-
-// Set safety-height.
-// Scans for the highest position on the Y axis, and afterwards replaces all instances
-// of this position with the requested height.
-func (vm *Machine) SetSafetyHeight(height float64) error {
-	// Ensure we detected the highest point in the script - we don't want any collisions
-
-	var maxz, nextz float64
-	for _, m := range vm.posStack {
-		if m.z > maxz {
-			nextz = maxz
-			maxz = m.z
-		}
-		if m.z > nextz && m.z < maxz {
-			nextz = m.z
-		}
-	}
-
-	if height <= nextz {
-		return errors.New("New safety height collides with lower feed height of " + strconv.FormatFloat(nextz, 'f', -1, 64))
-	}
-
-	// Apply the changes
-	var lastx, lasty float64
-	for idx, m := range vm.posStack {
-		if lastx == m.x && lasty == m.y && m.z == maxz {
-			vm.posStack[idx].z = height
-		}
-		lastx, lasty = m.x, m.y
-	}
-	return nil
-}
-
-// Ensure return to X0 Y0 Z0.
-// Simply adds a what is necessary to move back to X0 Y0 Z0.
-func (vm *Machine) Return() {
-	var maxz float64
-	for _, m := range vm.posStack {
-		if m.z > maxz {
-			maxz = m.z
-		}
-	}
-
-	lastPos := vm.posStack[len(vm.posStack)-1]
-	if lastPos.x == 0 && lastPos.y == 0 && lastPos.z == 0 {
-		return
-	} else if lastPos.x == 0 && lastPos.y == 0 && lastPos.z != 0 {
-		lastPos.z = 0
-		lastPos.state.moveMode = moveModeRapid
-		vm.posStack = append(vm.posStack, lastPos)
-		return
-	} else if lastPos.z == maxz {
-		move1 := lastPos
-		move1.x = 0
-		move1.y = 0
-		move1.state.moveMode = moveModeRapid
-		move2 := move1
-		move2.z = 0
-		vm.posStack = append(vm.posStack, move1)
-		vm.posStack = append(vm.posStack, move2)
-		return
-	} else {
-		move1 := lastPos
-		move1.z = maxz
-		move1.state.moveMode = moveModeRapid
-		move2 := move1
-		move2.x = 0
-		move2.y = 0
-		move3 := move2
-		move3.z = 0
-		vm.posStack = append(vm.posStack, move1)
-		vm.posStack = append(vm.posStack, move2)
-		vm.posStack = append(vm.posStack, move3)
-		return
-	}
+	vm.Positions = npos
 }

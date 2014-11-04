@@ -34,7 +34,7 @@ func (vm *Machine) Export() (res *gcode.Document, err error) {
 	shortBlockDesc("comment", &gcode.Comment{"Exported by gocnc/vm", false})
 	shortBlockDesc("header", &gcode.Word{'G', 21}, &gcode.Word{'G', 90})
 
-	for _, pos := range vm.posStack {
+	for _, pos := range vm.Positions {
 		s := pos.state
 		var moveMode, feedMode, cutCompMode float64
 
@@ -173,7 +173,7 @@ func (vm *Machine) Export() (res *gcode.Document, err error) {
 // Dump moves in (sort of) human readable format
 //
 func (vm *Machine) Dump() {
-	for _, m := range vm.posStack {
+	for _, m := range vm.Positions {
 		switch m.state.moveMode {
 		case moveModeNone:
 			fmt.Printf("Null move\n")
@@ -186,8 +186,8 @@ func (vm *Machine) Dump() {
 		case moveModeCCWArc:
 			fmt.Printf("Counterclockwise arc\n")
 		}
-		fmt.Printf("   Feedrate: %f\n", m.state.feedrate)
-		fmt.Printf("   Spindle: %t, clockwise: %t, speed: %f\n", m.state.spindleEnabled, m.state.spindleClockwise, m.state.spindleSpeed)
+		fmt.Printf("   Feedrate: %g\n", m.state.feedrate)
+		fmt.Printf("   Spindle: %t, clockwise: %t, speed: %g\n", m.state.spindleEnabled, m.state.spindleClockwise, m.state.spindleSpeed)
 		fmt.Printf("   Mist coolant: %t, flood coolant: %t\n", m.state.mistCoolant, m.state.floodCoolant)
 		fmt.Printf("   X: %f, Y: %f, Z: %f\n", m.x, m.y, m.z)
 	}

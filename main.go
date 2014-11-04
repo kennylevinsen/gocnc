@@ -6,6 +6,7 @@ import "github.com/joushou/gocnc/streaming"
 import "github.com/cheggaaa/pb"
 
 import "io/ioutil"
+import "bufio"
 import "flag"
 import "fmt"
 import "os"
@@ -18,22 +19,48 @@ var (
 	outputFile       = flag.String("output", "", "Location to dump processed data")
 	dumpStdout       = flag.Bool("stdout", false, "Output to stdout")
 	debugDump        = flag.Bool("debugdump", false, "Dump VM position state after optimization")
+	stats            = flag.Bool("stats", true, "Print gcode information")
+	autoStart        = flag.Bool("autostart", false, "Start sending code without asking questions")
 	noOpt            = flag.Bool("noopt", false, "Disable all optimization")
 	optBogusMove     = flag.Bool("optbogus", true, "Remove bogus moves")
 	optLiftSpeed     = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
 	optDrillSpeed    = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
 	optRouteGrouping = flag.Bool("optroute", true, "Optimize path to groups of routing moves")
-	precision        = flag.Int("precision", 4, "Precision to use for exported gcode")
-	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc")
-	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length")
-	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some optimization step comparisons")
-	feedLimit        = flag.Float64("feedlimit", -1, "Maximum feedrate")
+	precision        = flag.Int("precision", 4, "Precision to use for exported gcode (max mantissa digits)")
+	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc (mm)")
+	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length (mm)")
+	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some position comparisons (mm)")
+	feedLimit        = flag.Float64("feedlimit", 0, "Maximum feedrate (mm/min, <= 0 to disable)")
 	multiplyFeed     = flag.Float64("multiplyfeed", 0, "Feedrate multiplier (0 to disable)")
-	spindleCW        = flag.Float64("spindlecw", 0, "Force clockwise spindle speed")
-	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed")
-	safetyHeight     = flag.Float64("safetyheight", -1, "Enforce safety height")
+	spindleCW        = flag.Float64("spindlecw", 0, "Force clockwise spindle speed (RPM, <= 0 to disable)")
+	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed (RPM, <= 0 to disable)")
+	safetyHeight     = flag.Float64("safetyheight", 0, "Enforce safety height (mm, <= 0 to disable)")
 	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
 )
+
+func printStats(m *vm.Machine) {
+	minx, miny, minz, maxx, maxy, maxz, feedrates := m.Info()
+	fmt.Fprintf(os.Stderr, "Metrics\n")
+	fmt.Fprintf(os.Stderr, "-------------------------\n")
+	fmt.Fprintf(os.Stderr, "   Moves: %d\n", len(m.Positions))
+	fmt.Fprintf(os.Stderr, "   Feedrates (mm/min): ")
+
+	for idx, feed := range feedrates {
+		if feed == 0 {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "%g", feed)
+		if idx != len(feedrates)-1 {
+			fmt.Fprintf(os.Stderr, ", ")
+		}
+	}
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "   X (mm): %g <-> %g\n", minx, maxx)
+	fmt.Fprintf(os.Stderr, "   Y (mm): %g <-> %g\n", miny, maxy)
+	fmt.Fprintf(os.Stderr, "   Z (mm): %g <-> %g\n", minz, maxz)
+	fmt.Fprintf(os.Stderr, "-------------------------\n")
+
+}
 
 func main() {
 	// Parse arguments
@@ -73,7 +100,10 @@ func main() {
 
 	// Run through the VM
 	var m vm.Machine
-	m.Init(*maxArcDeviation, *minArcLineLength, *tolerance)
+	m.Init()
+	m.MaxArcDeviation = *maxArcDeviation
+	m.MinArcLineLength = *minArcLineLength
+	m.Tolerance = *tolerance
 
 	if err := m.Process(document); err != nil {
 		fmt.Fprintf(os.Stderr, "VM failed: %s\n", err)
@@ -101,10 +131,8 @@ func main() {
 
 	// Apply requested modifications
 	if *safetyHeight > 0 {
-		err := m.SetSafetyHeight(*safetyHeight)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(3)
+		if err := m.SetSafetyHeight(*safetyHeight); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Could not set safety height%s\n", err)
 		}
 	}
 
@@ -116,14 +144,18 @@ func main() {
 		m.FeedrateMultiplier(*multiplyFeed)
 	}
 
-	if *spindleCW != 0 {
+	if *spindleCW > 0 {
 		m.EnforceSpindle(true, true, *spindleCW)
-	} else if *spindleCCW != 0 {
+	} else if *spindleCCW > 0 {
 		m.EnforceSpindle(true, false, *spindleCCW)
 	}
 
 	if *enforceReturn {
 		m.Return()
+	}
+
+	if *stats {
+		printStats(&m)
 	}
 
 	// Handle VM output
@@ -148,6 +180,14 @@ func main() {
 	}
 
 	if *device != "" {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Fprintf(os.Stderr, "Run code? (y/n) ")
+		text, _ := reader.ReadString('\n')
+		if text != "y\n" {
+			fmt.Fprintf(os.Stderr, "Aborting\n")
+			os.Exit(5)
+		}
+
 		startTime := time.Now()
 		var s streaming.Streamer = &streaming.GrblStreamer{}
 
@@ -174,7 +214,7 @@ func main() {
 					fmt.Fprintf(os.Stderr, "\nStopping...\n")
 					close(progress)
 					s.Stop()
-					os.Exit(7)
+					os.Exit(5)
 				}
 			}
 		}()

@@ -6,12 +6,12 @@ import "fmt"
 
 // Retrieves position from top of stack
 func (vm *Machine) curPos() Position {
-	return vm.posStack[len(vm.posStack)-1]
+	return vm.Positions[len(vm.Positions)-1]
 }
 
 // Appends a position to the stack
 func (vm *Machine) addPos(pos Position) {
-	vm.posStack = append(vm.posStack, pos)
+	vm.Positions = append(vm.Positions, pos)
 }
 
 // Calculates the absolute position of the given statement, including optional I, J, K parameters
@@ -129,13 +129,13 @@ func (vm *Machine) approximateArc(stmt Statement) {
 	}
 
 	steps := 1
-	if vm.maxArcDeviation < radius1 {
-		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.maxArcDeviation/radius1)))))
+	if vm.MaxArcDeviation < radius1 {
+		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.MaxArcDeviation/radius1)))))
 	}
 
 	// Enforce a minimum line length
 	arcLen := math.Abs(angleDiff) * math.Sqrt(math.Pow(radius1, 2)+math.Pow((e3-s3)/angleDiff, 2))
-	steps2 := int(arcLen / vm.minArcLineLength)
+	steps2 := int(arcLen / vm.MinArcLineLength)
 
 	if steps > steps2 {
 		steps = steps2

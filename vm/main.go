@@ -170,15 +170,15 @@ type Position struct {
 // Machine state and settings
 type Machine struct {
 	state            State
+	completed        bool
 	metric           bool
 	absoluteMove     bool
 	absoluteArc      bool
 	movePlane        int
-	completed        bool
-	maxArcDeviation  float64
-	minArcLineLength float64
-	tolerance        float64
-	posStack         []Position
+	MaxArcDeviation  float64
+	MinArcLineLength float64
+	Tolerance        float64
+	Positions        []Position
 }
 
 //
@@ -344,15 +344,14 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 	return
 }
 
-// Initialize the VM
-// Suggested values are: Init(0.002, 0.01, 0.001)
-func (vm *Machine) Init(maxArcDeviation, minArcLineLength, tolerance float64) {
-	vm.posStack = append(vm.posStack, Position{})
+// Initialize the VM to sane default values
+func (vm *Machine) Init() {
+	vm.Positions = append(vm.Positions, Position{})
 	vm.metric = true
 	vm.absoluteMove = true
 	vm.absoluteArc = false
 	vm.movePlane = planeXY
-	vm.maxArcDeviation = maxArcDeviation
-	vm.minArcLineLength = minArcLineLength
-	vm.tolerance = tolerance
+	vm.MaxArcDeviation = 0.002
+	vm.MinArcLineLength = 0.01
+	vm.Tolerance = 0.001
 }

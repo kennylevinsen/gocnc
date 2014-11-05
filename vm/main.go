@@ -359,3 +359,31 @@ func (vm *Machine) Init() {
 	vm.MinArcLineLength = 0.01
 	vm.Tolerance = 0.001
 }
+
+//
+// Dump moves in (sort of) human readable format
+//
+func (m *Position) Dump() {
+	switch m.State.MoveMode {
+	case MoveModeNone:
+		fmt.Printf("Null move\n")
+	case MoveModeRapid:
+		fmt.Printf("Rapid move\n")
+	case MoveModeLinear:
+		fmt.Printf("Linear move\n")
+	case MoveModeCWArc:
+		fmt.Printf("Clockwise arc\n")
+	case MoveModeCCWArc:
+		fmt.Printf("Counterclockwise arc\n")
+	}
+	fmt.Printf("   Feedrate: %g\n", m.State.Feedrate)
+	fmt.Printf("   Spindle: %t, clockwise: %t, speed: %g\n", m.State.SpindleEnabled, m.State.SpindleClockwise, m.State.SpindleSpeed)
+	fmt.Printf("   Mist coolant: %t, flood coolant: %t\n", m.State.MistCoolant, m.State.FloodCoolant)
+	fmt.Printf("   X: %f, Y: %f, Z: %f\n", m.X, m.Y, m.Z)
+}
+
+func (vm *Machine) Dump() {
+	for _, m := range vm.Positions {
+		m.Dump()
+	}
+}

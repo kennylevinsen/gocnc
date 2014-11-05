@@ -210,6 +210,8 @@ func (vm *Machine) run(stmt statement) (err error) {
 			vm.State.MoveMode = MoveModeCWArc
 		case 3:
 			vm.State.MoveMode = MoveModeCCWArc
+		case 4:
+			// TODO handle dwell?
 		case 17:
 			vm.MovePlane = PlaneXY
 		case 18:
@@ -226,6 +228,9 @@ func (vm *Machine) run(stmt statement) (err error) {
 			vm.State.CutterCompensation = CutCompModeOuter
 		case 42:
 			vm.State.CutterCompensation = CutCompModeInner
+		case 64:
+			// TODO Handle naive cam tolerance
+			vm.Tolerance = stmt.getDefault('P', vm.Tolerance)
 		case 80:
 			vm.State.MoveMode = MoveModeNone
 		case 90:

@@ -269,8 +269,7 @@ func (vm *Machine) OptBogusMoves() {
 		xstate, ystate, zstate = m.X, m.Y, m.Z
 
 		if m.State.MoveMode != MoveModeRapid && m.State.MoveMode != MoveModeLinear {
-			// I'm not mentally ready for arc optim.Zation yet...
-			npos = append(npos, m)
+			lastvecX, lastvecY, lastvecZ = 0, 0, 0
 			continue
 		}
 

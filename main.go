@@ -32,6 +32,7 @@ var (
 	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some position comparisons (mm)")
 	feedLimit        = flag.Float64("feedlimit", 0, "Maximum feedrate (mm/min, <= 0 to disable)")
 	multiplyFeed     = flag.Float64("multiplyfeed", 0, "Feedrate multiplier (0 to disable)")
+	multiplyMove     = flag.Float64("multiplymove", 0, "Move distance multiplier (0 to disable)")
 	spindleCW        = flag.Float64("spindlecw", 0, "Force clockwise spindle speed (RPM, <= 0 to disable)")
 	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed (RPM, <= 0 to disable)")
 	safetyHeight     = flag.Float64("safetyheight", 0, "Enforce safety height (mm, <= 0 to disable)")
@@ -144,6 +145,10 @@ func main() {
 		m.FeedrateMultiplier(*multiplyFeed)
 	}
 
+	if *multiplyMove != 0 {
+		m.MoveMultiplier(*multiplyMove)
+	}
+
 	if *spindleCW > 0 {
 		m.EnforceSpindle(true, true, *spindleCW)
 	} else if *spindleCCW > 0 {
@@ -180,28 +185,25 @@ func main() {
 	}
 
 	if *device != "" {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Fprintf(os.Stderr, "Run code? (y/n) ")
-		text, _ := reader.ReadString('\n')
-		if text != "y\n" {
-			fmt.Fprintf(os.Stderr, "Aborting\n")
-			os.Exit(5)
+		if !*autoStart {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Fprintf(os.Stderr, "Run code? (y/n) ")
+			text, _ := reader.ReadString('\n')
+			if text != "y\n" {
+				fmt.Fprintf(os.Stderr, "Aborting\n")
+				os.Exit(5)
+			}
 		}
 
 		startTime := time.Now()
 		var s streaming.Streamer = &streaming.GrblStreamer{}
-
-		if err := s.Check(output); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Cannot stream to Grbl: %s\n", err)
-			os.Exit(4)
-		}
 
 		if err := s.Connect(*device); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Unable to connect to device: %s\n", err)
 			os.Exit(2)
 		}
 
-		pBar := pb.StartNew(output.Length())
+		pBar := pb.StartNew(len(m.Positions))
 		pBar.Format("[=> ]")
 
 		progress := make(chan int, 0)
@@ -220,7 +222,7 @@ func main() {
 		}()
 
 		go func() {
-			err := s.Send(output, *precision, progress)
+			err := s.Send(&m, *precision, progress)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "\nSend failed: %s\n", err)
 				close(progress)

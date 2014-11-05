@@ -76,7 +76,6 @@ func (f *Filemarker) Export(precision int) string {
 type Block struct {
 	Nodes       []Node
 	BlockDelete bool
-	Description string // Not exported
 }
 
 func (s *Block) AppendNode(n Node) {

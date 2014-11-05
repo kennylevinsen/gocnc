@@ -19,6 +19,15 @@ func (vm *Machine) FeedrateMultiplier(feedMultiplier float64) {
 	}
 }
 
+// Multiply move distances - This makes no sense - Dangerous.
+func (vm *Machine) MoveMultiplier(moveMultiplier float64) {
+	for idx, _ := range vm.Positions {
+		vm.Positions[idx].X *= moveMultiplier
+		vm.Positions[idx].Y *= moveMultiplier
+		vm.Positions[idx].Z *= moveMultiplier
+	}
+}
+
 // Enforce spindle mode
 func (vm *Machine) EnforceSpindle(enabled, clockwise bool, speed float64) {
 	for idx, _ := range vm.Positions {

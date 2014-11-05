@@ -167,18 +167,24 @@ func main() {
 	if *debugDump {
 		m.Dump()
 	}
-	output, err := m.Export()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Could not export vm state: %s\n", err)
 		os.Exit(3)
 	}
 
 	if *dumpStdout {
-		fmt.Printf(output.Export(*precision) + "\n")
+		g := streaming.StandardGenerator{Precision: *precision}
+		g.Init()
+		out := streaming.Export(&g, &m)
+		fmt.Printf(out)
 	}
 
 	if *outputFile != "" {
-		if err := ioutil.WriteFile(*outputFile, []byte(output.Export(*precision)), 0644); err != nil {
+		g := streaming.StandardGenerator{Precision: *precision}
+		g.Init()
+		out := streaming.Export(&g, &m)
+
+		if err := ioutil.WriteFile(*outputFile, []byte(out), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not write to file: %s\n", err)
 			os.Exit(2)
 		}
@@ -224,10 +230,15 @@ func main() {
 		go func() {
 			err := s.Send(&m, *precision, progress)
 			if err != nil {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Fprintf(os.Stderr, "Panic: %s\n", r)
+					}
+					s.Stop()
+					os.Exit(2)
+				}()
 				fmt.Fprintf(os.Stderr, "\nSend failed: %s\n", err)
 				close(progress)
-				s.Stop()
-				os.Exit(2)
 			}
 		}()
 		for _ = range progress {

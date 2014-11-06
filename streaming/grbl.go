@@ -4,6 +4,7 @@ import "io"
 import "bufio"
 import "github.com/joushou/goserial"
 import "github.com/joushou/gocnc/vm"
+import "github.com/joushou/gocnc/export"
 import "errors"
 import "fmt"
 
@@ -16,29 +17,6 @@ type GrblStreamer struct {
 	serialPort io.ReadWriteCloser
 	reader     *bufio.Reader
 	writer     *bufio.Writer
-}
-
-type GrblGenerator struct {
-	StandardGenerator
-}
-
-func (s *GrblGenerator) Toolchange(t int) string {
-	defer func() {
-		s.state.Tool = t
-	}()
-	// TODO Implement manual tool-change
-	return ""
-}
-
-func (s *GrblGenerator) CutterCompensation(cutComp int) string {
-	defer func() {
-		s.state.CutterCompensation = cutComp
-	}()
-
-	if cutComp != vm.CutCompModeNone {
-		panic("Cutter compensation not supported by Grbl")
-	}
-	return ""
 }
 
 //
@@ -60,6 +38,19 @@ func serialReader(reader *bufio.Reader) Result {
 	} else {
 		return Result{"info", b[:len(b)-1]}
 	}
+}
+
+func (s *GrblStreamer) Check(m *vm.Machine) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
+	gen := export.GrblGenerator{}
+	gen.Init()
+	gen.Write = func(string) {}
+	export.HandleAllPositions(&gen, m)
+	return nil
 }
 
 func (s *GrblStreamer) Connect(name string) error {
@@ -106,12 +97,12 @@ func (s *GrblStreamer) Send(m *vm.Machine, maxPrecision int, progress chan int) 
 
 	var length, okCnt int
 	list := make([]interface{}, 0)
-	gen := GrblGenerator{}
+	gen := export.GrblGenerator{}
 	gen.Precision = maxPrecision
 	gen.Init()
 
 	// handle results
-	handleRes := func() {
+	gen.HandleRes = func() {
 		if len(list) == 0 {
 			return
 		}
@@ -143,13 +134,14 @@ func (s *GrblStreamer) Send(m *vm.Machine, maxPrecision int, progress chan int) 
 		}
 	}
 
-	write := func(str string) {
+	gen.Write = func(str string) {
+		str += "\n"
 		length += len(str)
 		list = append(list, str)
 
 		// If Grbl is full...
 		for length > 127 {
-			handleRes()
+			gen.HandleRes()
 		}
 
 		_, err := s.writer.WriteString(str)
@@ -163,15 +155,12 @@ func (s *GrblStreamer) Send(m *vm.Machine, maxPrecision int, progress chan int) 
 	}
 
 	for _, pos := range m.Positions {
-		x := HandlePosition(&gen, pos)
-		for _, m := range x {
-			write(m + "\n")
-		}
+		export.HandlePosition(&gen, pos)
 		list = append(list, true)
 	}
 
 	for okCnt < len(m.Positions) {
-		handleRes()
+		gen.HandleRes()
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vm"
+import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
 import "github.com/cheggaaa/pb"
 
@@ -173,24 +174,31 @@ func main() {
 	}
 
 	if *dumpStdout {
-		g := streaming.StandardGenerator{Precision: *precision}
+		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		out := streaming.Export(&g, &m)
-		fmt.Printf(out)
+		export.HandleAllPositions(&g, &m)
+		fmt.Printf(g.Retrieve())
 	}
 
 	if *outputFile != "" {
-		g := streaming.StandardGenerator{Precision: *precision}
+		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		out := streaming.Export(&g, &m)
+		export.HandleAllPositions(&g, &m)
 
-		if err := ioutil.WriteFile(*outputFile, []byte(out), 0644); err != nil {
+		if err := ioutil.WriteFile(*outputFile, []byte(g.Retrieve()), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not write to file: %s\n", err)
 			os.Exit(2)
 		}
 	}
 
 	if *device != "" {
+		startTime := time.Now()
+		var s streaming.Streamer = &streaming.GrblStreamer{}
+
+		if err := s.Check(&m); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Incompatibility: %s\n", err)
+		}
+
 		if !*autoStart {
 			reader := bufio.NewReader(os.Stdin)
 			fmt.Fprintf(os.Stderr, "Run code? (y/n) ")
@@ -200,9 +208,6 @@ func main() {
 				os.Exit(5)
 			}
 		}
-
-		startTime := time.Now()
-		var s streaming.Streamer = &streaming.GrblStreamer{}
 
 		if err := s.Connect(*device); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Unable to connect to device: %s\n", err)

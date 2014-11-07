@@ -2,6 +2,7 @@ package vm
 
 import "errors"
 import "fmt"
+import "math"
 
 // Limit feedrate.
 func (vm *Machine) LimitFeedrate(feed float64) {
@@ -146,4 +147,22 @@ func (vm *Machine) Info() (minx, miny, minz, maxx, maxy, maxz float64, feedrates
 		}
 	}
 	return
+}
+
+// Estimate runtime for job (ignores rapid moves)
+func (m *Machine) ETA() int {
+	var eta float64
+	var lx, ly, lz float64
+	for _, pos := range m.Positions {
+		if pos.State.MoveMode != MoveModeLinear {
+			continue
+		}
+		dx, dy, dz := pos.X-lx, pos.Y-ly, pos.Z-lz
+		lx, ly, lz = pos.X, pos.Y, pos.Z
+		dist := math.Sqrt(math.Pow(dx, 2) + math.Pow(dy, 2) + math.Pow(dz, 2))
+		feed := pos.State.Feedrate / 60
+		//fmt.Printf("%f, %f\n", feed, dist)
+		eta += dist / feed
+	}
+	return int(eta)
 }

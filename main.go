@@ -57,6 +57,10 @@ func printStats(m *vm.Machine) {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "\n")
+	eta := m.ETA()
+	meta := eta / 60
+	seta := eta % 60
+	fmt.Fprintf(os.Stderr, "   ETA: %dm%ds\n", meta, seta)
 	fmt.Fprintf(os.Stderr, "   X (mm): %g <-> %g\n", minx, maxx)
 	fmt.Fprintf(os.Stderr, "   Y (mm): %g <-> %g\n", miny, maxy)
 	fmt.Fprintf(os.Stderr, "   Z (mm): %g <-> %g\n", minz, maxz)

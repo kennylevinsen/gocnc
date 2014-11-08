@@ -4,7 +4,7 @@ import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vm"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
-import "github.com/cheggaaa/pb"
+import "github.com/joushou/pb"
 
 import "io/ioutil"
 import "bufio"
@@ -38,6 +38,7 @@ var (
 	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed (RPM, <= 0 to disable)")
 	safetyHeight     = flag.Float64("safetyheight", 0, "Enforce safety height (mm, <= 0 to disable)")
 	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
+	flipXY           = flag.Bool("flipxy", false, "Flips the X and Y axes for all moves")
 )
 
 func printStats(m *vm.Machine) {
@@ -58,9 +59,8 @@ func printStats(m *vm.Machine) {
 	}
 	fmt.Fprintf(os.Stderr, "\n")
 	eta := m.ETA()
-	meta := eta / 60
-	seta := eta % 60
-	fmt.Fprintf(os.Stderr, "   ETA: %dm%ds\n", meta, seta)
+	meta := (eta / time.Second) * time.Second
+	fmt.Fprintf(os.Stderr, "   ETA: %s\n", meta.String())
 	fmt.Fprintf(os.Stderr, "   X (mm): %g <-> %g\n", minx, maxx)
 	fmt.Fprintf(os.Stderr, "   Y (mm): %g <-> %g\n", miny, maxy)
 	fmt.Fprintf(os.Stderr, "   Z (mm): %g <-> %g\n", minz, maxz)
@@ -136,6 +136,10 @@ func main() {
 	}
 
 	// Apply requested modifications
+	if *flipXY {
+		m.FlipXY()
+	}
+
 	if *safetyHeight > 0 {
 		if err := m.SetSafetyHeight(*safetyHeight); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not set safety height%s\n", err)
@@ -196,7 +200,6 @@ func main() {
 	}
 
 	if *device != "" {
-		startTime := time.Now()
 		var s streaming.Streamer = &streaming.GrblStreamer{}
 
 		if err := s.Check(&m); err != nil {
@@ -218,8 +221,9 @@ func main() {
 			os.Exit(2)
 		}
 
-		pBar := pb.StartNew(len(m.Positions))
+		pBar := pb.New(len(m.Positions))
 		pBar.Format("[=> ]")
+		pBar.Start()
 
 		progress := make(chan int, 0)
 		sigchan := make(chan os.Signal, 1)
@@ -254,7 +258,6 @@ func main() {
 			pBar.Increment()
 		}
 		pBar.Finish()
-		fmt.Fprintf(os.Stderr, "%s\n", time.Now().Sub(startTime).String())
 	}
 
 }

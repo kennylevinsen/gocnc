@@ -3,6 +3,15 @@ package vm
 import "errors"
 import "fmt"
 import "math"
+import "time"
+
+// Flips the X and Y axes of all moves
+func (vm *Machine) FlipXY() {
+	for idx, _ := range vm.Positions {
+		pos := vm.Positions[idx]
+		vm.Positions[idx].X, vm.Positions[idx].Y = pos.Y, pos.X
+	}
+}
 
 // Limit feedrate.
 func (vm *Machine) LimitFeedrate(feed float64) {
@@ -150,19 +159,30 @@ func (vm *Machine) Info() (minx, miny, minz, maxx, maxy, maxz float64, feedrates
 }
 
 // Estimate runtime for job (ignores rapid moves)
-func (m *Machine) ETA() int {
-	var eta float64
+func (m *Machine) ETA() time.Duration {
+	var eta time.Duration
 	var lx, ly, lz float64
 	for _, pos := range m.Positions {
-		if pos.State.MoveMode != MoveModeLinear {
+		feed := pos.State.Feedrate
+		if feed <= 0 {
+			// Just to use something...
+			feed = 300
+		}
+
+		// Convert from minutes to microseconds
+		feed /= 60000000
+
+		switch pos.State.MoveMode {
+		case MoveModeNone:
 			continue
+		case MoveModeRapid:
+			feed *= 8
 		}
 		dx, dy, dz := pos.X-lx, pos.Y-ly, pos.Z-lz
 		lx, ly, lz = pos.X, pos.Y, pos.Z
+
 		dist := math.Sqrt(math.Pow(dx, 2) + math.Pow(dy, 2) + math.Pow(dz, 2))
-		feed := pos.State.Feedrate / 60
-		//fmt.Printf("%f, %f\n", feed, dist)
-		eta += dist / feed
+		eta += time.Duration(dist/feed) * time.Microsecond
 	}
-	return int(eta)
+	return eta
 }

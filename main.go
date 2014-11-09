@@ -81,11 +81,6 @@ func main() {
 	// Parse arguments
 	kingpin.Parse()
 
-	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
-		fmt.Fprintf(os.Stderr, "Error: No output location provided\n")
-		os.Exit(1)
-	}
-
 	if *spindleCW != 0 && *spindleCCW != 0 {
 		fmt.Fprintf(os.Stderr, "Error: Cannot force both clockwise and counter clockwise rotation\n")
 		os.Exit(1)

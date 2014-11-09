@@ -27,7 +27,7 @@ var (
 	stats     = kingpin.Flag("stats", "Print gcode metrics").Default("true").Bool()
 	autoStart = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
 
-	noOpt            = kingpin.Flag("no-opt", "Disable all optimizations").Bool()
+	opt              = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
 	optBogusMove     = kingpin.Flag("optbogus", "Remove bogus moves").Default("true").Bool()
 	optLiftSpeed     = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
 	optDrillSpeed    = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
@@ -109,21 +109,21 @@ func main() {
 	}
 
 	// Optimize as requested
-	if *optDrillSpeed && !*noOpt {
+	if *optDrillSpeed && *opt {
 		m.OptDrillSpeed()
 	}
 
-	if *optRouteGrouping && !*noOpt {
+	if *optRouteGrouping && *opt {
 		if err := m.OptRouteGrouping(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
 		}
 	}
 
-	if *optBogusMove && !*noOpt {
+	if *optBogusMove && *opt {
 		m.OptBogusMoves()
 	}
 
-	if *optLiftSpeed && !*noOpt {
+	if *optLiftSpeed && *opt {
 		m.OptLiftSpeed()
 	}
 

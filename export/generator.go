@@ -20,6 +20,7 @@ func floatToString(f float64, p int) string {
 	return x
 }
 
+// Interface for exporting a vm position stack.
 type CodeGenerator interface {
 	GetPosition() vm.Position
 	SetPosition(vm.Position)
@@ -31,28 +32,29 @@ type CodeGenerator interface {
 	CutterCompensation(int)
 	Move(float64, float64, float64, int)
 	Init()
-	Flush()
 }
 
+// A simple generator with a few essentials.
 type BaseGenerator struct {
 	Position vm.Position
 }
 
+// Gets the current position for comparisons.
 func (s *BaseGenerator) GetPosition() vm.Position {
 	return s.Position
 }
 
+// Sets the current position.
 func (s *BaseGenerator) SetPosition(pos vm.Position) {
 	s.Position = pos
 }
 
+// Initializes the current position.
 func (s *BaseGenerator) Init() {
 	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1}}
 }
 
-func (s *BaseGenerator) Flush() {
-}
-
+// Calls the CodeGenerator for all changed states.
 func HandlePosition(s CodeGenerator, pos vm.Position) {
 	cp := s.GetPosition()
 	cs := cp.State
@@ -88,9 +90,9 @@ func HandlePosition(s CodeGenerator, pos vm.Position) {
 		s.Move(pos.X, pos.Y, pos.Z, ns.MoveMode)
 	}
 	s.SetPosition(pos)
-	s.Flush()
 }
 
+// Calls HandlePosition for all positions in the vm.
 func HandleAllPositions(s CodeGenerator, m *vm.Machine) {
 	for _, x := range m.Positions {
 		HandlePosition(s, x)

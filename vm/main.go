@@ -365,9 +365,7 @@ func (vm *Machine) Init() {
 	vm.Tolerance = 0.001
 }
 
-//
-// Dump moves in (sort of) human readable format
-//
+// Dump position in (sort of) human readable format
 func (m *Position) Dump() {
 	switch m.State.MoveMode {
 	case MoveModeNone:
@@ -387,6 +385,7 @@ func (m *Position) Dump() {
 	fmt.Printf("   X: %f, Y: %f, Z: %f\n", m.X, m.Y, m.Z)
 }
 
+// Dumps the entire machine
 func (vm *Machine) Dump() {
 	for _, m := range vm.Positions {
 		m.Dump()

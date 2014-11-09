@@ -9,6 +9,7 @@ type StringCodeGenerator struct {
 	Lines     []string
 }
 
+// Initializes state, and puts in a header block.
 func (s *StringCodeGenerator) Init() {
 	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1}}
 	s.Lines = []string{"(Exported by gocnc)", "G21G90\n"}
@@ -18,9 +19,7 @@ func (s *StringCodeGenerator) put(x string) {
 	s.Lines = append(s.Lines, x)
 }
 
-func (s *StringCodeGenerator) Flush() {
-}
-
+// Fetch the generated gcodes.
 func (s *StringCodeGenerator) Retrieve() string {
 	z := ""
 	for _, x := range s.Lines {
@@ -29,10 +28,12 @@ func (s *StringCodeGenerator) Retrieve() string {
 	return z
 }
 
+// Adds a toolchange operation (M6 Tn).
 func (s *StringCodeGenerator) Toolchange(t int) {
 	s.put(fmt.Sprintf("M6 T%d", t))
 }
 
+// Adds a spindle operation (M3/M4/M5 [Sn]).
 func (s *StringCodeGenerator) Spindle(enabled, clockwise bool, speed float64) {
 	x := ""
 	if s.Position.State.SpindleEnabled != enabled || s.Position.State.SpindleClockwise != clockwise {
@@ -52,6 +53,7 @@ func (s *StringCodeGenerator) Spindle(enabled, clockwise bool, speed float64) {
 	s.put(x)
 }
 
+// Adds a coolant operation (M7/M8/M9).
 func (s *StringCodeGenerator) Coolant(floodCoolant, mistCoolant bool) {
 	if !floodCoolant && !mistCoolant {
 		s.put("M9")
@@ -65,6 +67,7 @@ func (s *StringCodeGenerator) Coolant(floodCoolant, mistCoolant bool) {
 	}
 }
 
+// Sets feedmode (G93/G94/G95)
 func (s *StringCodeGenerator) FeedMode(feedMode int) {
 	switch feedMode {
 	case vm.FeedModeInvTime:
@@ -78,10 +81,12 @@ func (s *StringCodeGenerator) FeedMode(feedMode int) {
 	}
 }
 
+// Sets feedrate (Fn)
 func (s *StringCodeGenerator) Feedrate(feedrate float64) {
 	s.put(fmt.Sprintf("F%s", floatToString(feedrate, s.Precision)))
 }
 
+// Sets cutter compensation mode (G40/G41/G42)
 func (s *StringCodeGenerator) CutterCompensation(cutComp int) {
 	switch cutComp {
 	case vm.CutCompModeNone:
@@ -95,6 +100,7 @@ func (s *StringCodeGenerator) CutterCompensation(cutComp int) {
 	}
 }
 
+// Issues a move ([G0/G1] [Xn] [Yn] [Zn])
 func (s *StringCodeGenerator) Move(x, y, z float64, moveMode int) {
 	w := ""
 	pos := s.GetPosition()

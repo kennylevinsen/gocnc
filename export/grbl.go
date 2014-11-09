@@ -10,6 +10,7 @@ type GrblGenerator struct {
 	Write     func(string)
 }
 
+// A no-op toolchange, as Grbl doesn't support it
 func (s *GrblGenerator) Toolchange(t int) {
 	// TODO Implement manual tool-change
 }
@@ -63,6 +64,7 @@ func (s *GrblGenerator) Feedrate(feedrate float64) {
 	s.Write(fmt.Sprintf("F%s", floatToString(feedrate, s.Precision)))
 }
 
+// A no-op cutter-compensation, as Grbl doesn't support it
 func (s *GrblGenerator) CutterCompensation(cutComp int) {
 	if cutComp != vm.CutCompModeNone {
 		panic("Cutter compensation not supported by Grbl")

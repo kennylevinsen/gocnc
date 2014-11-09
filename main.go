@@ -18,6 +18,7 @@ import "time"
 var (
 	inputFile  = kingpin.Arg("input", "Input file").Required().ExistingFile()
 	device     = kingpin.Flag("device", "Serial device for gcode").Short('d').ExistingFile()
+	baudrate   = kingpin.Flag("baudrate", "Baudrate for serial device").Short('b').Default("115200").Int()
 	outputFile = kingpin.Flag("output", "Output file for gcode").Short('o').String()
 
 	dumpStdout = kingpin.Flag("stdout", "Dump gcode to stdout").Bool()
@@ -212,7 +213,7 @@ func main() {
 			}
 		}
 
-		if err := s.Connect(*device); err != nil {
+		if err := s.Connect(*device, *baudrate); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Unable to connect to device: %s\n", err)
 			os.Exit(2)
 		}

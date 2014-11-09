@@ -8,7 +8,8 @@ import "github.com/joushou/gocnc/export"
 import "errors"
 import "fmt"
 
-type Result struct {
+// A result struct used by serialReader
+type result struct {
 	level   string
 	message string
 }
@@ -23,23 +24,25 @@ type GrblStreamer struct {
 // Serial handling
 //
 
-func serialReader(reader *bufio.Reader) Result {
+// Awaits and reads a response from Grbl
+func serialReader(reader *bufio.Reader) result {
 	c, err := reader.ReadBytes('\n')
 	if err != nil {
-		return Result{"serial-error", fmt.Sprintf("%s", err)}
+		return result{"serial-error", fmt.Sprintf("%s", err)}
 	}
 	b := string(c)
 	if b == "ok\r\n" {
-		return Result{"ok", ""}
+		return result{"ok", ""}
 	} else if len(b) >= 5 && b[:5] == "error" {
-		return Result{"error", b[6 : len(b)-1]}
+		return result{"error", b[6 : len(b)-1]}
 	} else if len(b) >= 5 && b[:5] == "alarm" {
-		return Result{"alarm", b[6 : len(b)-1]}
+		return result{"alarm", b[6 : len(b)-1]}
 	} else {
-		return Result{"info", b[:len(b)-1]}
+		return result{"info", b[:len(b)-1]}
 	}
 }
 
+// Takes the vm for a dry-run, to see if the states are compatible with Grbl.
 func (s *GrblStreamer) Check(m *vm.Machine) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -53,8 +56,9 @@ func (s *GrblStreamer) Check(m *vm.Machine) (err error) {
 	return nil
 }
 
-func (s *GrblStreamer) Connect(name string) error {
-	c := &serial.Config{Name: name, Baud: 115200}
+// Connect to a serial port at the given path and baudrate
+func (s *GrblStreamer) Connect(name string, baud int) error {
+	c := &serial.Config{Name: name, Baud: baud}
 	var err error
 	s.serialPort, err = serial.OpenPort(c)
 	if err != nil {
@@ -82,11 +86,13 @@ func (s *GrblStreamer) Connect(name string) error {
 	return nil
 }
 
+// Raises a position alarm in Grbl. Works as emergency stop.
 func (s *GrblStreamer) Stop() {
 	_, _ = s.serialPort.Write([]byte("\x18\n"))
 	s.serialPort.Close()
 }
 
+// Sends the vm states. The progress channel sends the current position number as progress info.
 func (s *GrblStreamer) Send(m *vm.Machine, maxPrecision int, progress chan int) (err error) {
 	defer func() {
 		close(progress)

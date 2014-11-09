@@ -31,15 +31,15 @@ Run
 
 The usage guide can be retrieved with:
 
-      ./gocnc
+      ./gocnc --help
 
 A usage example:
 
-      ./gocnc --input ~/gcode.nc --device /dev/tty.usbmodem1441
+      ./gocnc --device /dev/tty.usbmodem1441 ~/gcode.nc
 
 Or if you don't want any optimizations:
 
-      ./gocnc --input ~/gcode.nc --device /dev.tty.usbmodem1441 --noopt
+      ./gocnc --device /dev.tty.usbmodem1441 --no-opt ~/gcode.nc
 
 Why Go?
 ====
@@ -71,7 +71,7 @@ In the future, more functionality will be soft-implemented, such as peck drillin
 Notes
 ====
 
-Route grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--optroute=false"
+Route grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--no-optroute"
 
 gocnc does *not* honor modal group order, but simply performs all known commands on a line/block (And fails on unknown commands). Modal group handling might be relevant, but some components might be difficult to implement, as gocnc is designed to only update states if there is a spindle move to associate it with.
 

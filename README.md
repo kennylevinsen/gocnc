@@ -41,6 +41,10 @@ Or if you don't want any optimizations:
 
       ./gocnc --device /dev.tty.usbmodem1441 --no-opt ~/gcode.nc
 
+Or, perhaps you only just want to know the work-area and estimated runtime:
+
+      ./gocnc ~/gcode.nc
+
 Why Go?
 ====
 

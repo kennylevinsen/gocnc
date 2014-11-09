@@ -5,40 +5,48 @@ import "github.com/joushou/gocnc/vm"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
 import "github.com/joushou/pb"
+import "gopkg.in/alecthomas/kingpin.v1"
 
 import "io/ioutil"
 import "bufio"
-import "flag"
+
 import "fmt"
 import "os"
 import "os/signal"
 import "time"
 
 var (
-	device           = flag.String("device", "", "Serial device for CNC control")
-	inputFile        = flag.String("input", "", "NC file to process")
-	outputFile       = flag.String("output", "", "Location to dump processed data")
-	dumpStdout       = flag.Bool("stdout", false, "Output to stdout")
-	debugDump        = flag.Bool("debugdump", false, "Dump VM position state after optimization")
-	stats            = flag.Bool("stats", true, "Print gcode information")
-	autoStart        = flag.Bool("autostart", false, "Start sending code without asking questions")
-	noOpt            = flag.Bool("noopt", false, "Disable all optimization")
-	optBogusMove     = flag.Bool("optbogus", true, "Remove bogus moves")
-	optLiftSpeed     = flag.Bool("optlifts", true, "Use rapid position for Z-only upwards moves")
-	optDrillSpeed    = flag.Bool("optdrill", true, "Use rapid position for drills to last drilled depth")
-	optRouteGrouping = flag.Bool("optroute", true, "Optimize path to groups of routing moves")
-	precision        = flag.Int("precision", 4, "Precision to use for exported gcode (max mantissa digits)")
-	maxArcDeviation  = flag.Float64("maxarcdeviation", 0.002, "Maximum deviation from an ideal arc (mm)")
-	minArcLineLength = flag.Float64("minarclinelength", 0.01, "Minimum arc segment line length (mm)")
-	tolerance        = flag.Float64("tolerance", 0.001, "Tolerance used by some position comparisons (mm)")
-	feedLimit        = flag.Float64("feedlimit", 0, "Maximum feedrate (mm/min, <= 0 to disable)")
-	multiplyFeed     = flag.Float64("multiplyfeed", 0, "Feedrate multiplier (0 to disable)")
-	multiplyMove     = flag.Float64("multiplymove", 0, "Move distance multiplier (0 to disable)")
-	spindleCW        = flag.Float64("spindlecw", 0, "Force clockwise spindle speed (RPM, <= 0 to disable)")
-	spindleCCW       = flag.Float64("spindleccw", 0, "Force counter clockwise spindle speed (RPM, <= 0 to disable)")
-	safetyHeight     = flag.Float64("safetyheight", 0, "Enforce safety height (mm, <= 0 to disable)")
-	enforceReturn    = flag.Bool("enforcereturn", true, "Enforce rapid return to X0 Y0 Z0")
-	flipXY           = flag.Bool("flipxy", false, "Flips the X and Y axes for all moves")
+	inputFile  = kingpin.Arg("input", "Input file").Required().ExistingFile()
+	device     = kingpin.Flag("device", "Serial device for gcode").Short('d').ExistingFile()
+	outputFile = kingpin.Flag("output", "Output file for gcode").Short('o').String()
+
+	dumpStdout = kingpin.Flag("stdout", "Dump gcode to stdout").Bool()
+	debugDump  = kingpin.Flag("debugdump", "Dump VM state to stdout").Hidden().Bool()
+
+	stats     = kingpin.Flag("stats", "Print gcode metrics").Default("true").Bool()
+	autoStart = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
+
+	noOpt            = kingpin.Flag("no-opt", "Disable all optimizations").Bool()
+	optBogusMove     = kingpin.Flag("optbogus", "Remove bogus moves").Default("true").Bool()
+	optLiftSpeed     = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
+	optDrillSpeed    = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
+	optRouteGrouping = kingpin.Flag("optroute", "Optimize path to groups of routing moves").Default("true").Bool()
+
+	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
+	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()
+	minArcLineLength = kingpin.Flag("minarclinelength", "Minimum arc segment line length (mm)").Default("0.01").Float()
+	tolerance        = kingpin.Flag("tolerance", "Tolerance used by some position comparisons (mm)").Default("0.001").Float()
+
+	feedLimit    = kingpin.Flag("feedlimit", "Maximum feedrate (mm/min, <= 0 to disable)").Float()
+	safetyHeight = kingpin.Flag("safetyheight", "Enforce safety height (mm, <= 0 to disable)").Float()
+	multiplyFeed = kingpin.Flag("multiplyfeed", "Feedrate multiplier (0 to disable)").Float()
+	multiplyMove = kingpin.Flag("multiplymove", "Move distance multiplier (0 to disable)").Float()
+
+	spindleCW  = kingpin.Flag("spindlecw", "Force clockwise spindle speed (RPM, <= 0 to disable)").Float()
+	spindleCCW = kingpin.Flag("spindleccw", "Force counter clockwise spindle speed (RPM, <= 0 to disable)").Float()
+
+	enforceReturn = kingpin.Flag("enforcereturn", "Enforce rapid return to X0 Y0 Z0").Default("true").Bool()
+	flipXY        = kingpin.Flag("flipxy", "Flips the X and Y axes for all moves").Bool()
 )
 
 func printStats(m *vm.Machine) {
@@ -70,27 +78,15 @@ func printStats(m *vm.Machine) {
 
 func main() {
 	// Parse arguments
-	flag.Parse()
-	if len(flag.Args()) > 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *inputFile == "" {
-		fmt.Fprintf(os.Stderr, "Error: No file provided\n")
-		flag.Usage()
-		os.Exit(1)
-	}
+	kingpin.Parse()
 
 	if *outputFile == "" && *device == "" && !*dumpStdout && !*debugDump {
 		fmt.Fprintf(os.Stderr, "Error: No output location provided\n")
-		flag.Usage()
 		os.Exit(1)
 	}
 
 	if *spindleCW != 0 && *spindleCCW != 0 {
 		fmt.Fprintf(os.Stderr, "Error: Cannot force both clockwise and counter clockwise rotation\n")
-		flag.Usage()
 		os.Exit(1)
 	}
 

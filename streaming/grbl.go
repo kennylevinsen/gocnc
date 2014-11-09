@@ -88,8 +88,18 @@ func (s *GrblStreamer) Connect(name string, baud int) error {
 
 // Raises a position alarm in Grbl. Works as emergency stop.
 func (s *GrblStreamer) Stop() {
-	_, _ = s.serialPort.Write([]byte("\x18\n"))
+	_, _ = s.serialPort.Write([]byte("\x18"))
 	s.serialPort.Close()
+}
+
+// Issues a cycle-start ("~")
+func (s *GrblStreamer) Start() {
+	_, _ = s.serialPort.Write([]byte("~"))
+}
+
+// Issues a feed-hold ("!")
+func (s *GrblStreamer) Pause() {
+	_, _ = s.serialPort.Write([]byte("!"))
 }
 
 // Sends the vm states. The progress channel sends the current position number as progress info.

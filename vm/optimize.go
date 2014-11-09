@@ -5,14 +5,14 @@ import "errors"
 import "fmt"
 
 //
-// Ideas for other optim.Zation steps:
+// Ideas for other optimization steps:
 //   Move grouping - Group moves based on Z0, Zdepth lifts, to finalize
 //      section, instead of constantly moving back and forth
 //   Vector-angle removal - Combine moves where the move vector changes
 //      less than a certain minimum angle
 //
 
-// Detects a previous drill, and uses rapid move to the previous known depth
+// Detects a previous drill, and uses rapid move to the previous known depth.
 // Scans through all Z-descent moves, logs its height, and ensures that any future move
 // at that location will use MoveModeRapid to go to the deepest previous known Z-height.
 func (vm *Machine) OptDrillSpeed() {
@@ -67,10 +67,10 @@ func (vm *Machine) OptDrillSpeed() {
 }
 
 // Reduces moves between routing operations.
-// Scans through position stack, grouping moves that move from >= Z0 to < Z0.
+// It does this by scanning through position stack, grouping moves that move from >= Z0 to < Z0.
 // These moves are then sorted after closest to previous position, starting at X0 Y0,
 // and moves to groups recalculated as they are inserted in a new stack.
-// This optim.Zation pass bails if the Z axis is moved simultaneously with any other axis,
+// This optimization pass bails if the Z axis is moved simultaneously with any other axis,
 // or the input ends with the drill below Z0, in order to play it safe.
 // This pass is new, and therefore slightly experimental.
 func (vm *Machine) OptRouteGrouping() (err error) {

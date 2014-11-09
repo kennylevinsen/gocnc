@@ -158,7 +158,7 @@ func (vm *Machine) Info() (minx, miny, minz, maxx, maxy, maxz float64, feedrates
 	return
 }
 
-// Estimate runtime for job (ignores rapid moves)
+// Estimate runtime for job
 func (m *Machine) ETA() time.Duration {
 	var eta time.Duration
 	var lx, ly, lz float64
@@ -176,6 +176,7 @@ func (m *Machine) ETA() time.Duration {
 		case MoveModeNone:
 			continue
 		case MoveModeRapid:
+			// This is silly, but it gives something to calculate with
 			feed *= 8
 		}
 		dx, dy, dz := pos.X-lx, pos.Y-ly, pos.Z-lz

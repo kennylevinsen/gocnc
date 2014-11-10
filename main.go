@@ -4,7 +4,7 @@ import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vm"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
-import "github.com/joushou/pb"
+import "github.com/cheggaaa/pb"
 import "gopkg.in/alecthomas/kingpin.v1"
 
 import "io/ioutil"

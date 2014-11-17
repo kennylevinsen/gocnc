@@ -49,19 +49,103 @@ var (
 
 	enforceReturn    = kingpin.Flag("enforcereturn", "Enforce rapid return to X0 Y0 Z0").Default("true").Bool()
 	flipXY           = kingpin.Flag("flipxy", "Flips the X and Y axes for all moves").Bool()
-	manualToolchange = kingpin.Flag("manualtoolchange", "Wait for manual toolchange on M6").Bool()
-	toolchangeHeight = kingpin.Flag("toolchangeheight", "Height to go to for toolchange (0 to use safety height)").Default("0").Float()
+	manualToolchange = kingpin.Flag("manualtool", "Wait for manual toolchange operation").Bool()
+	manualSpindle    = kingpin.Flag("manualspindle", "Wait for manual spindle operation").Bool()
+	manualCoolant    = kingpin.Flag("manualcoolant", "Wait for manual coolant operation").Bool()
+	spindleWait      = kingpin.Flag("spindlewait", "Seconds to dwell after spindle changes").Int()
+	coolantWait      = kingpin.Flag("coolantwait", "Seconds to dwell after coolant changes").Int()
+	toolchangeHeight = kingpin.Flag("tcheight", "Height to go to for toolchange (0 to use safety height)").Default("0").Float()
 )
 
-type ManualToolchange struct {
+var (
+	generators []export.CodeGenerator
+	machine    vm.Machine
+)
+
+type WaitGenerator struct {
 	export.BaseGenerator
-	machine    *vm.Machine
+}
+
+// Waits a certain time after spindle changes
+func (m *WaitGenerator) Spindle(bool, bool, float64) {
+	if *spindleWait > 0 {
+		time.Sleep(time.Duration(*spindleWait) * time.Second)
+	}
+}
+
+// Waits a certain time after coolant changes
+func (m *WaitGenerator) Coolant(bool, bool) {
+	if *coolantWait > 0 {
+		time.Sleep(time.Duration(*spindleWait) * time.Second)
+	}
+}
+
+// A generator implement user interaction
+type ManualGenerator struct {
+	export.BaseGenerator
 	gen        export.CodeGenerator
 	toolLength float64
 	hasChanged bool
+	tguard     int
+	sguard     int
 }
 
-func (m *ManualToolchange) Toolchange(i int) {
+// Prompts user to make the requested changes to spindle, waits for <ENTER>
+func (m *ManualGenerator) Spindle(enabled, clockwise bool, speed float64) {
+	if m.sguard > 0 {
+		return
+	}
+	m.sguard++
+	defer func() {
+		m.sguard--
+	}()
+
+	if !*manualSpindle {
+		return
+	}
+
+	if enabled {
+		if clockwise {
+			fmt.Fprintf(os.Stderr, "Set spindle to clockwise rotation at %.2f RPM. Confirm with <ENTER>", speed)
+		} else {
+			fmt.Fprintf(os.Stderr, "Set spindle to counter clockwise rotation at %.2f RPM. Confirm with <ENTER>", speed)
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Disable spindle. Confirm with <ENTER>")
+	}
+	reader := bufio.NewReader(os.Stdin)
+	_, _ = reader.ReadString('\n')
+}
+
+// Prompts the user to make the request changes to spindle, waits for <ENTER>
+func (m *ManualGenerator) Coolant(floodCoolant, mistCoolant bool) {
+	if !*manualCoolant {
+		return
+	}
+	if !floodCoolant && !mistCoolant {
+		fmt.Fprintf(os.Stderr, "Disable coolant. Confirm with <ENTER>")
+	} else if floodCoolant && mistCoolant {
+		fmt.Fprintf(os.Stderr, "Enable flood and mist coolant. Confirm with <ENTER>")
+	} else if floodCoolant {
+		fmt.Fprintf(os.Stderr, "Enable flood coolant. Confirm with <ENTER>")
+	} else if mistCoolant {
+		fmt.Fprintf(os.Stderr, "Enable mist coolant. Confirm with <ENTER>")
+	}
+	reader := bufio.NewReader(os.Stdin)
+	_, _ = reader.ReadString('\n')
+}
+
+// Moves spindle to easily accessible spot, and prompts for toolchange
+func (m *ManualGenerator) Toolchange(i int) {
+	// Multiple entry guard!
+	if m.tguard > 0 {
+		return
+	}
+	m.tguard++
+	defer func() {
+		m.tguard--
+	}()
+
 	if !*manualToolchange {
 		return
 	}
@@ -69,22 +153,23 @@ func (m *ManualToolchange) Toolchange(i int) {
 	// Go to X0Y0 and Z as requested
 	newHeight := 0.0
 	if *toolchangeHeight == 0 {
-		newHeight = m.machine.FindSafetyHeight()
+		newHeight = machine.FindSafetyHeight()
 	} else {
 		newHeight = *toolchangeHeight
 	}
 
+	curPos := m.GetPosition()
+
 	if m.hasChanged {
-		curPos := m.GetPosition()
 		newPos := curPos
 		newPos.Z = newHeight
-		export.HandlePosition(newPos, m.gen)
+		export.HandlePosition(newPos, generators...)
 		newPos.X = 0
 		newPos.Y = 0
 		newPos.State.SpindleEnabled = false
 		newPos.State.MistCoolant = false
 		newPos.State.FloodCoolant = false
-		export.HandlePosition(newPos, m.gen)
+		export.HandlePosition(newPos, generators...)
 	}
 
 	// Await tool info
@@ -112,29 +197,27 @@ func (m *ManualToolchange) Toolchange(i int) {
 	if m.hasChanged {
 		change := toolLength - m.toolLength
 
-		for idx, _ := range m.machine.Positions {
-			m.machine.Positions[idx].Z += change
+		for idx, _ := range machine.Positions {
+			machine.Positions[idx].Z += change
 		}
 
-		curPos := m.GetPosition()
 		newPos := curPos
 		newPos.Z = newHeight
 
-		export.HandlePosition(newPos, m.gen)
+		export.HandlePosition(newPos, generators...)
 		newPos.Z = curPos.Z + change
-		export.HandlePosition(newPos, m.gen)
+		export.HandlePosition(newPos, generators...)
 	}
 
 	m.toolLength = toolLength
 	m.hasChanged = true
-
 }
 
 func printStats(m *vm.Machine) {
-	minx, miny, minz, maxx, maxy, maxz, feedrates := m.Info()
+	minx, miny, minz, maxx, maxy, maxz, feedrates := machine.Info()
 	fmt.Fprintf(os.Stderr, "Metrics\n")
 	fmt.Fprintf(os.Stderr, "-------------------------\n")
-	fmt.Fprintf(os.Stderr, "   Moves: %d\n", len(m.Positions))
+	fmt.Fprintf(os.Stderr, "   Moves: %d\n", len(machine.Positions))
 	fmt.Fprintf(os.Stderr, "   Feedrates (mm/min): ")
 
 	for idx, feed := range feedrates {
@@ -147,7 +230,7 @@ func printStats(m *vm.Machine) {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "\n")
-	eta := m.ETA()
+	eta := machine.ETA()
 	meta := (eta / time.Second) * time.Second
 	fmt.Fprintf(os.Stderr, "   ETA: %s\n", meta.String())
 	fmt.Fprintf(os.Stderr, "   X (mm): %g <-> %g\n", minx, maxx)
@@ -177,76 +260,75 @@ func main() {
 	document := gcode.Parse(code)
 
 	// Run through the VM
-	var m vm.Machine
-	m.Init()
-	m.MaxArcDeviation = *maxArcDeviation
-	m.MinArcLineLength = *minArcLineLength
-	m.Tolerance = *tolerance
+	machine.Init()
+	machine.MaxArcDeviation = *maxArcDeviation
+	machine.MinArcLineLength = *minArcLineLength
+	machine.Tolerance = *tolerance
 
-	if err := m.Process(document); err != nil {
+	if err := machine.Process(document); err != nil {
 		fmt.Fprintf(os.Stderr, "VM failed: %s\n", err)
 		os.Exit(3)
 	}
 
 	// Optimize as requested
 	if *optDrillSpeed && *opt {
-		m.OptDrillSpeed()
+		machine.OptDrillSpeed()
 	}
 
 	if *optRouteGrouping && *opt {
-		if err := m.OptRouteGrouping(); err != nil {
+		if err := machine.OptRouteGrouping(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
 		}
 	}
 
 	if *optBogusMove && *opt {
-		m.OptBogusMoves()
+		machine.OptBogusMoves()
 	}
 
 	if *optLiftSpeed && *opt {
-		m.OptLiftSpeed()
+		machine.OptLiftSpeed()
 	}
 
 	// Apply requested modifications
 	if *flipXY {
-		m.FlipXY()
+		machine.FlipXY()
 	}
 
 	if *safetyHeight > 0 {
-		if err := m.SetSafetyHeight(*safetyHeight); err != nil {
+		if err := machine.SetSafetyHeight(*safetyHeight); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not set safety height%s\n", err)
 		}
 	}
 
 	if *feedLimit > 0 {
-		m.LimitFeedrate(*feedLimit)
+		machine.LimitFeedrate(*feedLimit)
 	}
 
 	if *multiplyFeed != 0 {
-		m.FeedrateMultiplier(*multiplyFeed)
+		machine.FeedrateMultiplier(*multiplyFeed)
 	}
 
 	if *multiplyMove != 0 {
-		m.MoveMultiplier(*multiplyMove)
+		machine.MoveMultiplier(*multiplyMove)
 	}
 
 	if *spindleCW > 0 {
-		m.EnforceSpindle(true, true, *spindleCW)
+		machine.EnforceSpindle(true, true, *spindleCW)
 	} else if *spindleCCW > 0 {
-		m.EnforceSpindle(true, false, *spindleCCW)
+		machine.EnforceSpindle(true, false, *spindleCCW)
 	}
 
 	if *enforceReturn {
-		m.Return()
+		machine.Return()
 	}
 
 	if *stats {
-		printStats(&m)
+		printStats(&machine)
 	}
 
 	// Handle VM output
 	if *debugDump {
-		m.Dump()
+		machine.Dump()
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Could not export vm state: %s\n", err)
@@ -256,14 +338,14 @@ func main() {
 	if *dumpStdout {
 		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		export.HandleAllPositions(&m, &g)
+		export.HandleAllPositions(&machine, &g)
 		fmt.Printf(g.Retrieve())
 	}
 
 	if *outputFile != "" {
 		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		export.HandleAllPositions(&m, &g)
+		export.HandleAllPositions(&machine, &g)
 
 		if err := ioutil.WriteFile(*outputFile, []byte(g.Retrieve()), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not write to file: %s\n", err)
@@ -272,14 +354,19 @@ func main() {
 	}
 
 	if *device != "" {
+		mt := &ManualGenerator{}
+		wt := &WaitGenerator{}
 		s := &streaming.GrblStreamer{}
 		s.Precision = *precision
-		mt := &ManualToolchange{machine: &m, gen: s}
+
+		generators = append(generators, mt)
+		generators = append(generators, wt)
+		generators = append(generators, s)
 
 		s.Init()
 		mt.Init()
 
-		if err := s.Check(&m); err != nil {
+		if err := s.Check(&machine); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Incompatibility: %s\n", err)
 		}
 
@@ -298,7 +385,7 @@ func main() {
 			os.Exit(2)
 		}
 
-		pBar := pb.New(len(m.Positions))
+		pBar := pb.New(len(machine.Positions))
 		pBar.ManualUpdate = true
 		pBar.Format("[=> ]")
 		pBar.Start()
@@ -316,9 +403,8 @@ func main() {
 			}
 		}()
 
-		for idx, _ := range m.Positions {
-			export.HandlePosition(m.Positions[idx], mt)
-			if err := export.HandlePosition(m.Positions[idx], s); err != nil {
+		for idx, _ := range machine.Positions {
+			if err := export.HandlePositionAtIndex(&machine, idx, generators...); err != nil {
 				s.Stop()
 				panic(err)
 			}

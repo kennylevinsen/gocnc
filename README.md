@@ -66,6 +66,8 @@ Features
 * Optimization (Route grouping, for example. All configurable with command-line parameters)
 * Simple gcode output (Handles arcs and canned cycles internally, outputting only G0 and G1 for moves, and a few other things, such as feedrate mode)
 * Manual tool-changes (Moves to a configurable position, turns off spindle of possible and waits for user-entry of new tool-length to compensate for in the rest of the program)
+* Manual spindle and coolant control prompts (configurable)
+* Spindle and coolant waits (To let the spindle spin up or coolant flow)
 * Ability to send to multiple end-points (such as a seperate thing for handling a VFD for spindle control)
 * Quick overview of work-area and ETA of file before file it gets executed (Will be way off, but it's helpful for giving you an idea)
 * Can output to file if you only want the optimizations or simplifications

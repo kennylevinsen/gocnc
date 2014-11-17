@@ -139,3 +139,13 @@ func HandleAllPositions(m *vm.Machine, gens ...CodeGenerator) error {
 	}
 	return nil
 }
+
+// Calls HandlePosition for all generators at an index in the vm
+func HandlePositionAtIndex(m *vm.Machine, idx int, gens ...CodeGenerator) error {
+	for _, x := range gens {
+		if err := HandlePosition(m.Positions[idx], x); err != nil {
+			return err
+		}
+	}
+	return nil
+}

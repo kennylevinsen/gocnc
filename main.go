@@ -4,7 +4,7 @@ import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vm"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
-import "github.com/cheggaaa/pb"
+import "github.com/joushou/pb"
 import "gopkg.in/alecthomas/kingpin.v1"
 
 import "io/ioutil"
@@ -14,6 +14,7 @@ import "fmt"
 import "os"
 import "os/signal"
 import "time"
+import "strconv"
 
 var (
 	inputFile  = kingpin.Arg("input", "Input file").Required().ExistingFile()
@@ -46,9 +47,88 @@ var (
 	spindleCW  = kingpin.Flag("spindlecw", "Force clockwise spindle speed (RPM, <= 0 to disable)").Float()
 	spindleCCW = kingpin.Flag("spindleccw", "Force counter clockwise spindle speed (RPM, <= 0 to disable)").Float()
 
-	enforceReturn = kingpin.Flag("enforcereturn", "Enforce rapid return to X0 Y0 Z0").Default("true").Bool()
-	flipXY        = kingpin.Flag("flipxy", "Flips the X and Y axes for all moves").Bool()
+	enforceReturn    = kingpin.Flag("enforcereturn", "Enforce rapid return to X0 Y0 Z0").Default("true").Bool()
+	flipXY           = kingpin.Flag("flipxy", "Flips the X and Y axes for all moves").Bool()
+	manualToolchange = kingpin.Flag("manualtoolchange", "Wait for manual toolchange on M6").Bool()
+	toolchangeHeight = kingpin.Flag("toolchangeheight", "Height to go to for toolchange (0 to use safety height)").Default("0").Float()
 )
+
+type ManualToolchange struct {
+	export.BaseGenerator
+	machine    *vm.Machine
+	gen        export.CodeGenerator
+	toolLength float64
+	hasChanged bool
+}
+
+func (m *ManualToolchange) Toolchange(i int) {
+	if !*manualToolchange {
+		return
+	}
+
+	// Go to X0Y0 and Z as requested
+	newHeight := 0.0
+	if *toolchangeHeight == 0 {
+		newHeight = m.machine.FindSafetyHeight()
+	} else {
+		newHeight = *toolchangeHeight
+	}
+
+	if m.hasChanged {
+		curPos := m.GetPosition()
+		newPos := curPos
+		newPos.Z = newHeight
+		export.HandlePosition(newPos, m.gen)
+		newPos.X = 0
+		newPos.Y = 0
+		newPos.State.SpindleEnabled = false
+		newPos.State.MistCoolant = false
+		newPos.State.FloodCoolant = false
+		export.HandlePosition(newPos, m.gen)
+	}
+
+	// Await tool info
+	reader := bufio.NewReader(os.Stdin)
+	toolLength := m.toolLength
+	for {
+		if !m.hasChanged {
+			fmt.Fprintf(os.Stderr, "Change to tool %d. New tool length (First tool, will not change offset) [%f]: ", i, toolLength)
+		} else {
+			fmt.Fprintf(os.Stderr, "Change to tool %d. New tool length [%f]: ", i, toolLength)
+		}
+		text, _ := reader.ReadString('\n')
+		if len(text) == 0 {
+			panic("No data from os.stdin")
+		}
+		text = text[:len(text)-1]
+		if text == "" {
+			break
+		} else if t, err := strconv.ParseFloat(text, 64); err == nil {
+			toolLength = t
+			break
+		}
+	}
+
+	if m.hasChanged {
+		change := toolLength - m.toolLength
+
+		for idx, _ := range m.machine.Positions {
+			m.machine.Positions[idx].Z += change
+		}
+
+		curPos := m.GetPosition()
+		newPos := curPos
+		newPos.Z = newHeight
+
+		export.HandlePosition(newPos, m.gen)
+		newPos.Z = curPos.Z + change
+		export.HandlePosition(newPos, m.gen)
+	}
+
+	m.toolLength = toolLength
+	m.hasChanged = true
+
+}
 
 func printStats(m *vm.Machine) {
 	minx, miny, minz, maxx, maxy, maxz, feedrates := m.Info()
@@ -176,14 +256,14 @@ func main() {
 	if *dumpStdout {
 		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		export.HandleAllPositions(&g, &m)
+		export.HandleAllPositions(&m, &g)
 		fmt.Printf(g.Retrieve())
 	}
 
 	if *outputFile != "" {
 		g := export.StringCodeGenerator{Precision: *precision}
 		g.Init()
-		export.HandleAllPositions(&g, &m)
+		export.HandleAllPositions(&m, &g)
 
 		if err := ioutil.WriteFile(*outputFile, []byte(g.Retrieve()), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Could not write to file: %s\n", err)
@@ -192,7 +272,12 @@ func main() {
 	}
 
 	if *device != "" {
-		var s streaming.Streamer = &streaming.GrblStreamer{}
+		s := &streaming.GrblStreamer{}
+		s.Precision = *precision
+		mt := &ManualToolchange{machine: &m, gen: s}
+
+		s.Init()
+		mt.Init()
 
 		if err := s.Check(&m); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Incompatibility: %s\n", err)
@@ -214,10 +299,10 @@ func main() {
 		}
 
 		pBar := pb.New(len(m.Positions))
+		pBar.ManualUpdate = true
 		pBar.Format("[=> ]")
 		pBar.Start()
 
-		progress := make(chan int, 0)
 		sigchan := make(chan os.Signal, 1)
 		signal.Notify(sigchan, os.Interrupt)
 
@@ -225,31 +310,23 @@ func main() {
 			for sig := range sigchan {
 				if sig == os.Interrupt {
 					fmt.Fprintf(os.Stderr, "\nStopping...\n")
-					close(progress)
 					s.Stop()
 					os.Exit(5)
 				}
 			}
 		}()
 
-		go func() {
-			err := s.Send(&m, *precision, progress)
-			if err != nil {
-				defer func() {
-					if r := recover(); r != nil {
-						fmt.Fprintf(os.Stderr, "Panic: %s\n", r)
-					}
-					s.Stop()
-					os.Exit(2)
-				}()
-				fmt.Fprintf(os.Stderr, "\nSend failed: %s\n", err)
-				close(progress)
+		for idx, _ := range m.Positions {
+			export.HandlePosition(m.Positions[idx], mt)
+			if err := export.HandlePosition(m.Positions[idx], s); err != nil {
+				s.Stop()
+				panic(err)
 			}
-		}()
-		for _ = range progress {
 			pBar.Increment()
+			pBar.Update()
 		}
 		pBar.Finish()
+		pBar.Update()
 	}
 
 }

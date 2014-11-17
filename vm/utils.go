@@ -47,19 +47,27 @@ func (vm *Machine) EnforceSpindle(enabled, clockwise bool, speed float64) {
 	}
 }
 
+// Detect the highest Z position
+func (vm *Machine) FindSafetyHeight() float64 {
+	var maxz float64
+	for _, m := range vm.Positions {
+		if m.Z > maxz {
+			maxz = m.Z
+		}
+	}
+	return maxz
+}
+
 // Set safety-height.
 // Scans for the highest position on the Y axis, and afterwards replaces all instances
 // of this position with the requested height.
 func (vm *Machine) SetSafetyHeight(height float64) error {
 	// Ensure we detected the highest point in the script - we don't want any collisions
 
-	var maxz, nextz float64
+	maxz := vm.FindSafetyHeight()
+	nextz := 0.0
 	for _, m := range vm.Positions {
-		if m.Z > maxz {
-			nextz = maxz
-			maxz = m.Z
-		}
-		if m.Z > nextz && m.Z < maxz {
+		if m.Z < maxz && m.Z > nextz {
 			nextz = m.Z
 		}
 	}

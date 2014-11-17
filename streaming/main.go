@@ -8,5 +8,4 @@ type Streamer interface {
 	Stop()
 	Start()
 	Pause()
-	Send(*vm.Machine, int, chan int) error
 }

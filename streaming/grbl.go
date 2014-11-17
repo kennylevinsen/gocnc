@@ -15,9 +15,11 @@ type result struct {
 }
 
 type GrblStreamer struct {
+	export.GrblGenerator
 	serialPort io.ReadWriteCloser
 	reader     *bufio.Reader
 	writer     *bufio.Writer
+	generator  *export.GrblGenerator
 }
 
 //
@@ -42,6 +44,38 @@ func serialReader(reader *bufio.Reader) result {
 	}
 }
 
+func (s *GrblStreamer) handleRes(str string) {
+	// Look for a response
+	res := serialReader(s.reader)
+
+	switch res.level {
+	case "error":
+		panic(fmt.Sprintf("Received error from CNC: %s, block: %s", res.message, str))
+	case "alarm":
+		panic(fmt.Sprintf("Received alarm from CNC: %s, block: %s", res.message, str))
+	case "info":
+		fmt.Printf("\nReceived info from CNC: %s\n", res.message)
+	default:
+	}
+}
+
+func (s *GrblStreamer) Init() {
+	s.Write = func(str string) {
+		str += "\n"
+
+		_, err := s.writer.WriteString(str)
+		if err != nil {
+			panic(fmt.Sprintf("Error while sending data: %s", err))
+		}
+		err = s.writer.Flush()
+		if err != nil {
+			panic(fmt.Sprintf("Error while flushing writer: %s", err))
+		}
+		s.handleRes(str)
+	}
+	s.GrblGenerator.Init()
+}
+
 // Takes the vm for a dry-run, to see if the states are compatible with Grbl.
 func (s *GrblStreamer) Check(m *vm.Machine) (err error) {
 	defer func() {
@@ -52,7 +86,7 @@ func (s *GrblStreamer) Check(m *vm.Machine) (err error) {
 	gen := export.GrblGenerator{}
 	gen.Init()
 	gen.Write = func(string) {}
-	export.HandleAllPositions(&gen, m)
+	export.HandleAllPositions(m, &gen)
 	return nil
 }
 
@@ -100,83 +134,4 @@ func (s *GrblStreamer) Start() {
 // Issues a feed-hold ("!")
 func (s *GrblStreamer) Pause() {
 	_, _ = s.serialPort.Write([]byte("!"))
-}
-
-// Sends the vm states. The progress channel sends the current position number as progress info.
-func (s *GrblStreamer) Send(m *vm.Machine, maxPrecision int, progress chan int) (err error) {
-	defer func() {
-		close(progress)
-		if r := recover(); r != nil {
-			err = errors.New(fmt.Sprintf("\n%s", r))
-		}
-	}()
-
-	var length, okCnt int
-	list := make([]interface{}, 0)
-	gen := export.GrblGenerator{}
-	gen.Precision = maxPrecision
-	gen.Init()
-
-	// handle results
-	gen.HandleRes = func() {
-		if len(list) == 0 {
-			return
-		}
-
-		// See if we met a checkpoint
-		if _, ok := list[0].(bool); ok {
-			list = list[1:]
-			progress <- okCnt
-			okCnt++
-			return
-		}
-
-		// Look for a response
-		res := serialReader(s.reader)
-
-		switch res.level {
-		case "error":
-			panic(fmt.Sprintf("Received error from CNC: %s, block: %s", res.message, list[0]))
-		case "alarm":
-			panic(fmt.Sprintf("Received alarm from CNC: %s, block: %s", res.message, list[0]))
-		case "info":
-			fmt.Printf("\nReceived info from CNC: %s\n", res.message)
-		default:
-			x := list[0]
-			list = list[1:]
-			if i, ok := x.(string); ok {
-				length -= len(i)
-			}
-		}
-	}
-
-	gen.Write = func(str string) {
-		str += "\n"
-		length += len(str)
-		list = append(list, str)
-
-		// If Grbl is full...
-		for length > 127 {
-			gen.HandleRes()
-		}
-
-		_, err := s.writer.WriteString(str)
-		if err != nil {
-			panic(fmt.Sprintf("Error while sending data: %s", err))
-		}
-		err = s.writer.Flush()
-		if err != nil {
-			panic(fmt.Sprintf("Error while flushing writer: %s", err))
-		}
-	}
-
-	for _, pos := range m.Positions {
-		export.HandlePosition(&gen, pos)
-		list = append(list, true)
-	}
-
-	for okCnt < len(m.Positions) {
-		gen.HandleRes()
-	}
-	return nil
 }

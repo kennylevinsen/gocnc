@@ -6,7 +6,6 @@ import "fmt"
 type GrblGenerator struct {
 	BaseGenerator
 	Precision int
-	HandleRes func()
 	Write     func(string)
 }
 

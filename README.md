@@ -14,20 +14,28 @@ It offloads arc approximation, minimizes moves between sections of a job, kills 
 
 As for gcode sending, it provides a nice progress bar with estimated time of completion, and ensures that Grbl always has something to chew on by maintaining a full serial buffer. (Normal senders wait for an "OK" on each command, while this tool maintains a full buffer, parsing the responses as they arrive.)
 
-Install
+Usage
 ====
+
+Installation
+----
 
       go get github.com/joushou/gocnc
 
+Update
+----
+
+      go get -u github.com/joushou/gocnc
+
 Build
-====
+----
 
 In the gocnc directory ($GOPATH/src/github.com/joushou/gocnc)
 
       go build
 
 Run
-====
+----
 
 The usage guide can be retrieved with:
 
@@ -52,6 +60,31 @@ Well, because it's awesome. I originally wrote the tool in Python, but performan
 
 So, I wrote the new tool in Go. What took up to 2 minutes through PyPy took me 1-2 seconds in Go.
 
+Features
+====
+
+* Optimization (Route grouping, for example. All configurable with command-line parameters)
+* Simple gcode output (Handles arcs and canned cycles internally, outputting only G0 and G1 for moves, and a few other things, such as feedrate mode)
+* Manual tool-changes (Moves to a configurable position, turns off spindle of possible and waits for user-entry of new tool-length to compensate for in the rest of the program)
+* Ability to send to multiple end-points (such as a seperate thing for handling a VFD for spindle control)
+* Quick overview of work-area and ETA of file before file it gets executed (Will be way off, but it's helpful for giving you an idea)
+* Can output to file if you only want the optimizations or simplifications
+
+Upcoming
+----
+
+* Jogging (High priority, but a tiny bit nasty if I have to do it by sending random G1's)
+* Coordinate offsets
+* Canned cycles (Peck drill, ...)
+* Terminal UI ('Cause it would be awesome!)
+* Position status (Slow refresh rate for Grbl at the current rate, but should be fast for TinyG/G2)
+
+Under consideration
+----
+
+* Rotational axes (Shouldn't complicate matters too much, but might require some extra considerations for the optimization passes)
+* Web UI (I hate web with a burning passion, but I might consider it if it provides some significant benefit)
+
 Detailed description
 ====
 
@@ -68,7 +101,7 @@ The optimization passes can be summarized as:
 
 The last is by far the most complicated, and results in the largest gain. The slower the machine, the larger the gain. For my very fast shapeoko, I get ~15-20% speedup on the tests I have made, which will become much more with more sane maximum speeds. It is only really useful for 2D stuff, and automatically bails out with a warning when it might be unsafe to run.
 
-To aid controllers like Grbl, and in general produce higher calculation accuracy, arcs are calculated by the VM, so that the VM position stack only contains straight lines. This makes optimization and analysis *much* easier, allows for double/float64 during calculations, and lets a very heavy task off Grbl's shoulders. Many GCode interpreters seem to be unable to handle the more complicated uses of arcs as well, and this ensures that they don't have to worry about that headache.
+To aid controllers like Grbl, and in general produce higher calculation accuracy and configurability, arcs are calculated by the VM, so that the VM position stack only contains straight lines. This makes optimization and analysis *much* easier, allows for double/float64 during calculations, and lets a very heavy task off Grbl's shoulders. Many GCode interpreters seem to be unable to handle the more complicated uses of arcs as well, and this ensures that they don't have to worry about that headache.
 
 In the future, more functionality will be soft-implemented, such as peck drilling cycle, etc.
 

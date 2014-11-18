@@ -30,6 +30,7 @@ var (
 
 	opt              = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
 	optBogusMove     = kingpin.Flag("optbogus", "Remove bogus moves").Default("true").Bool()
+	optVector        = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
 	optLiftSpeed     = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
 	optDrillSpeed    = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
 	optRouteGrouping = kingpin.Flag("optroute", "Optimize path to groups of routing moves").Default("true").Bool()
@@ -283,6 +284,10 @@ func main() {
 
 	if *optBogusMove && *opt {
 		machine.OptBogusMoves()
+	}
+
+	if *optVector && *opt {
+		machine.OptVector()
 	}
 
 	if *optLiftSpeed && *opt {

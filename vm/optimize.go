@@ -1,5 +1,7 @@
 package vm
 
+import "github.com/joushou/gocnc/utils"
+
 import "math"
 import "errors"
 import "fmt"
@@ -287,6 +289,66 @@ func (vm *Machine) OptBogusMoves() {
 			npos = append(npos, m)
 			lastvecX, lastvecY, lastvecZ = vecX, vecY, vecZ
 		}
+	}
+	vm.Positions = npos
+}
+
+// Kills redundant partial moves.
+// Calculates the unit-vector, and kills all incremental moves between A and B.
+func (vm *Machine) OptVector() {
+	var (
+		vec1, vec2, vec3, u, ca, cb utils.Vector
+		ready                       int
+		dist, angle1, angle2        float64
+		npos                        []Position = make([]Position, 0)
+	)
+
+	for _, m := range vm.Positions {
+		if m.State.MoveMode != MoveModeRapid && m.State.MoveMode != MoveModeLinear {
+			ready = 0
+			goto appendpos
+		}
+
+		if ready == 0 {
+			vec1 = utils.Vector{m.X, m.Y, m.Z}
+			ready++
+			goto appendpos
+		} else if ready == 1 {
+			vec2 = utils.Vector{m.X, m.Y, m.Z}
+			ready++
+			goto appendpos
+		} else if ready == 2 {
+			vec3 = utils.Vector{m.X, m.Y, m.Z}
+			ready++
+		} else {
+			vec1 = vec2
+			vec2 = vec3
+			vec3 = utils.Vector{m.X, m.Y, m.Z}
+		}
+
+		u = vec1.Diff(vec3).Divide(vec1.Diff(vec3).Norm())
+
+		ca = vec2.Diff(vec1)
+		cb = vec2.Diff(vec3)
+
+		angle1 = ca.Dot(u) / (ca.Norm() * u.Norm())
+		angle2 = cb.Dot(u) / (cb.Norm() * u.Norm())
+		if angle1 > 0 || angle2 < 0 {
+			fmt.Printf("Vectors:\n")
+			fmt.Printf("%f, %f, %f\n", vec1.X, vec1.Y, vec1.Z)
+			fmt.Printf("%f, %f, %f\n", vec2.X, vec2.Y, vec2.Z)
+			fmt.Printf("%f, %f, %f\n", vec3.X, vec3.Y, vec3.Z)
+		}
+		dist = ca.Cross(u).Norm() / u.Norm()
+
+		if dist < vm.Tolerance {
+			npos[len(npos)-1] = m
+			vec2 = vec1
+			continue
+		}
+
+	appendpos:
+		npos = append(npos, m)
 	}
 	vm.Positions = npos
 }

@@ -96,7 +96,9 @@ func (vm *Machine) Return() {
 			maxz = m.Z
 		}
 	}
-
+	if len(vm.Positions) == 0 {
+		return
+	}
 	lastPos := vm.Positions[len(vm.Positions)-1]
 	if lastPos.X == 0 && lastPos.Y == 0 && lastPos.Z == 0 {
 		return

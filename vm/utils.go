@@ -89,7 +89,7 @@ func (vm *Machine) SetSafetyHeight(height float64) error {
 
 // Ensure return to X0 Y0 Z0.
 // Simply adds a what is necessary to move back to X0 Y0 Z0.
-func (vm *Machine) Return() {
+func (vm *Machine) Return(disableSpindle, disableCoolant bool) {
 	var maxz float64
 	for _, m := range vm.Positions {
 		if m.Z > maxz {
@@ -101,10 +101,25 @@ func (vm *Machine) Return() {
 	}
 	lastPos := vm.Positions[len(vm.Positions)-1]
 	if lastPos.X == 0 && lastPos.Y == 0 && lastPos.Z == 0 {
+		if disableSpindle {
+			lastPos.State.SpindleEnabled = false
+		}
+		if disableCoolant {
+			lastPos.State.MistCoolant = false
+			lastPos.State.FloodCoolant = false
+		}
+		vm.Positions[len(vm.Positions)-1] = lastPos
 		return
 	} else if lastPos.X == 0 && lastPos.Y == 0 && lastPos.Z != 0 {
 		lastPos.Z = 0
 		lastPos.State.MoveMode = MoveModeRapid
+		if disableSpindle {
+			lastPos.State.SpindleEnabled = false
+		}
+		if disableCoolant {
+			lastPos.State.MistCoolant = false
+			lastPos.State.FloodCoolant = false
+		}
 		vm.Positions = append(vm.Positions, lastPos)
 		return
 	} else if lastPos.Z == maxz {
@@ -114,6 +129,13 @@ func (vm *Machine) Return() {
 		move1.State.MoveMode = MoveModeRapid
 		move2 := move1
 		move2.Z = 0
+		if disableSpindle {
+			move2.State.SpindleEnabled = false
+		}
+		if disableCoolant {
+			move2.State.MistCoolant = false
+			move2.State.FloodCoolant = false
+		}
 		vm.Positions = append(vm.Positions, move1)
 		vm.Positions = append(vm.Positions, move2)
 		return
@@ -126,6 +148,13 @@ func (vm *Machine) Return() {
 		move2.Y = 0
 		move3 := move2
 		move3.Z = 0
+		if disableSpindle {
+			move3.State.SpindleEnabled = false
+		}
+		if disableCoolant {
+			move3.State.MistCoolant = false
+			move3.State.FloodCoolant = false
+		}
 		vm.Positions = append(vm.Positions, move1)
 		vm.Positions = append(vm.Positions, move2)
 		vm.Positions = append(vm.Positions, move3)

@@ -317,14 +317,14 @@ func main() {
 		machine.MoveMultiplier(*multiplyMove)
 	}
 
+	if *enforceReturn {
+		machine.Return(true, true)
+	}
+
 	if *spindleCW > 0 {
 		machine.EnforceSpindle(true, true, *spindleCW)
 	} else if *spindleCCW > 0 {
 		machine.EnforceSpindle(true, false, *spindleCCW)
-	}
-
-	if *enforceReturn {
-		machine.Return()
 	}
 
 	if *stats {

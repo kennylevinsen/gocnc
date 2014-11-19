@@ -297,10 +297,10 @@ func (vm *Machine) OptBogusMoves() {
 // Calculates the unit-vector, and kills all incremental moves between A and B.
 func (vm *Machine) OptVector() {
 	var (
-		vec1, vec2, vec3, u, ca, cb utils.Vector
-		ready                       int
-		dist, angle1, angle2        float64
-		npos                        []Position = make([]Position, 0)
+		vec1, vec2, vec3 utils.Vector
+		ready            int
+		length1, length2 float64
+		npos             []Position = make([]Position, 0)
 	)
 
 	for _, m := range vm.Positions {
@@ -326,24 +326,16 @@ func (vm *Machine) OptVector() {
 			vec3 = utils.Vector{m.X, m.Y, m.Z}
 		}
 
-		u = vec1.Diff(vec3).Divide(vec1.Diff(vec3).Norm())
-
-		ca = vec2.Diff(vec1)
-		cb = vec2.Diff(vec3)
-
-		angle1 = ca.Dot(u) / (ca.Norm() * u.Norm())
-		angle2 = cb.Dot(u) / (cb.Norm() * u.Norm())
-		if angle1 > 0 || angle2 < 0 {
-			fmt.Printf("Vectors:\n")
-			fmt.Printf("%f, %f, %f\n", vec1.X, vec1.Y, vec1.Z)
-			fmt.Printf("%f, %f, %f\n", vec2.X, vec2.Y, vec2.Z)
-			fmt.Printf("%f, %f, %f\n", vec3.X, vec3.Y, vec3.Z)
+		length1 = vec1.Diff(vec2).Norm() + vec2.Diff(vec3).Norm()
+		length2 = vec1.Diff(vec3).Norm()
+		if length1 == length2 {
+			fmt.Printf("Length: %f, %f, %s, %s, %s\n", length1, length2, vec1.String(), vec2.String(), vec3.String())
+			fmt.Printf("...: %f, %f, %f:\n", vec1.Diff(vec2).Norm(), vec2.Diff(vec3).Norm(), vec1.Diff(vec3).Norm())
 		}
-		dist = ca.Cross(u).Norm() / u.Norm()
-
-		if dist < vm.Tolerance {
+		if length1-length2 < vm.Tolerance {
+			fmt.Printf("It works?\n")
 			npos[len(npos)-1] = m
-			vec2 = vec1
+			//vec2 = vec1
 			continue
 		}
 

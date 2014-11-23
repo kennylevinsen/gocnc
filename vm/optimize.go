@@ -328,14 +328,9 @@ func (vm *Machine) OptVector() {
 
 		length1 = vec1.Diff(vec2).Norm() + vec2.Diff(vec3).Norm()
 		length2 = vec1.Diff(vec3).Norm()
-		if length1 == length2 {
-			fmt.Printf("Length: %f, %f, %s, %s, %s\n", length1, length2, vec1.String(), vec2.String(), vec3.String())
-			fmt.Printf("...: %f, %f, %f:\n", vec1.Diff(vec2).Norm(), vec2.Diff(vec3).Norm(), vec1.Diff(vec3).Norm())
-		}
 		if length1-length2 < vm.Tolerance {
-			fmt.Printf("It works?\n")
 			npos[len(npos)-1] = m
-			//vec2 = vec1
+			vec2 = vec1
 			continue
 		}
 

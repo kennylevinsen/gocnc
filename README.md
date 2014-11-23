@@ -99,6 +99,7 @@ For optimizations, I have gone to quite crazy lengths, implementing a sort of in
 The optimization passes can be summarized as:
 * Remove redundant code (Does not change behaviour)
 * Use rapid moves Z-axis lift and drill moves where possible
+* Vector optimization (Removes moves which cause a path deviation below the tolerance)
 * Group route operations, to minimize time spent seeking around
 
 The last is by far the most complicated, and results in the largest gain. The slower the machine, the larger the gain. For my very fast shapeoko, I get ~15-20% speedup on the tests I have made, which will become much more with more sane maximum speeds. It is only really useful for 2D stuff, and automatically bails out with a warning when it might be unsafe to run.

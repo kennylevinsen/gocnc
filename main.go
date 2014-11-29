@@ -29,16 +29,17 @@ var (
 	autoStart = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
 
 	opt              = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
-	optBogusMove     = kingpin.Flag("optbogus", "Remove bogus moves").Default("true").Bool()
+	optBogusMove     = kingpin.Flag("optbogus", "Remove all moves that would be an implicit part of another move (Deprecated for optvector)").Default("false").Bool()
 	optVector        = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
 	optLiftSpeed     = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
 	optDrillSpeed    = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
-	optRouteGrouping = kingpin.Flag("optroute", "Optimize path to groups of routing moves").Default("true").Bool()
+	optRouteGrouping = kingpin.Flag("optroute", "Optimize path to groups of routing moves").Default("false").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
 	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()
 	minArcLineLength = kingpin.Flag("minarclinelength", "Minimum arc segment line length (mm)").Default("0.01").Float()
-	tolerance        = kingpin.Flag("tolerance", "Tolerance used by some position comparisons (mm)").Default("0.001").Float()
+	rtolerance       = kingpin.Flag("rtolerance", "Tolerance used by route grouping (mm)").Default("0.001").Float()
+	vtolerance       = kingpin.Flag("vtolerance", "Tolerance used by vector optimization (mm)").Default("0.0003").Float()
 
 	feedLimit    = kingpin.Flag("feedlimit", "Maximum feedrate (mm/min, <= 0 to disable)").Float()
 	safetyHeight = kingpin.Flag("safetyheight", "Enforce safety height (mm, <= 0 to disable)").Float()
@@ -264,7 +265,6 @@ func main() {
 	machine.Init()
 	machine.MaxArcDeviation = *maxArcDeviation
 	machine.MinArcLineLength = *minArcLineLength
-	machine.Tolerance = *tolerance
 
 	if err := machine.Process(document); err != nil {
 		fmt.Fprintf(os.Stderr, "VM failed: %s\n", err)
@@ -277,7 +277,7 @@ func main() {
 	}
 
 	if *optRouteGrouping && *opt {
-		if err := machine.OptRouteGrouping(); err != nil {
+		if err := machine.OptRouteGrouping(*rtolerance); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
 		}
 	}
@@ -287,7 +287,7 @@ func main() {
 	}
 
 	if *optVector && *opt {
-		machine.OptVector()
+		machine.OptVector(*vtolerance)
 	}
 
 	if *optLiftSpeed && *opt {

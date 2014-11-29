@@ -1,6 +1,7 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
+import "github.com/joushou/gocnc/utils"
 import "fmt"
 import "errors"
 
@@ -18,6 +19,10 @@ import "errors"
 //   G19   - yz arc plane
 //   G20   - imperial mode
 //   G21   - metric mode
+//   G40   - cutter compensation
+//   G41   - cutter compensation
+//   G42   - cutter compensation
+//   G64   - tolerance
 //   G80   - cancel mode (?)
 //   G90   - absolute
 //   G90.1 - absolute arc
@@ -31,6 +36,7 @@ import "errors"
 //   M03 - spindle enable clockwise
 //   M04 - spindle enable counterclockwise
 //   M05 - spindle disable
+//   M06 - toolchange
 //   M07 - mist coolant enable
 //   M08 - flood coolant enable
 //   M09 - coolant disable
@@ -39,8 +45,15 @@ import "errors"
 //   F - feedrate
 //   S - spindle speed
 //   P - parameter
+//   T - tool
 //   X, Y, Z - cartesian movement
 //   I, J, K - arc center definition
+//
+// Notes:
+//   Dwell (G04) is ignored
+//   Tolerance (G64) is ignored
+//   Cutter compensation is just passed to machine
+//
 
 //
 // TODO
@@ -110,11 +123,15 @@ type Position struct {
 	X, Y, Z float64
 }
 
+func (p Position) Vector() utils.Vector {
+	return utils.Vector{p.X, p.Y, p.Z}
+}
+
 // Machine state and settings
 type Machine struct {
 	State            State
 	Completed        bool
-	Metric           bool
+	Imperial         bool
 	AbsoluteMove     bool
 	AbsoluteArc      bool
 	MovePlane        int
@@ -219,9 +236,9 @@ func (vm *Machine) run(stmt statement) (err error) {
 		case 19:
 			vm.MovePlane = PlaneYZ
 		case 20:
-			vm.Metric = false
+			vm.Imperial = true
 		case 21:
-			vm.Metric = true
+			vm.Imperial = false
 		case 40:
 			vm.State.CutterCompensation = CutCompModeNone
 		case 41:
@@ -229,8 +246,7 @@ func (vm *Machine) run(stmt statement) (err error) {
 		case 42:
 			vm.State.CutterCompensation = CutCompModeInner
 		case 64:
-			// TODO Handle naive cam tolerance
-			vm.Tolerance = stmt.getDefault('P', vm.Tolerance)
+			// TODO I presume this is safe to ignore?
 		case 80:
 			vm.State.MoveMode = MoveModeNone
 		case 90:
@@ -290,7 +306,7 @@ func (vm *Machine) run(stmt statement) (err error) {
 
 	// F-codes
 	for _, f := range stmt.getAll('F') {
-		if !vm.Metric {
+		if vm.Imperial {
 			f *= 25.4
 		}
 		if f <= 0 {
@@ -356,13 +372,12 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 // Initialize the VM to sane default values
 func (vm *Machine) Init() {
 	vm.Positions = append(vm.Positions, Position{})
-	vm.Metric = true
+	vm.Imperial = false
 	vm.AbsoluteMove = true
 	vm.AbsoluteArc = false
 	vm.MovePlane = PlaneXY
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
-	vm.Tolerance = 0.001
 }
 
 // Dump position in (sort of) human readable format

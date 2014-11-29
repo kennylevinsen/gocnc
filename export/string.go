@@ -5,8 +5,9 @@ import "fmt"
 
 type StringCodeGenerator struct {
 	BaseGenerator
-	Precision int
-	Lines     []string
+	Precision      int
+	Lines          []string
+	ForceModeWrite bool
 }
 
 // Initializes state, and puts in a header block.
@@ -31,12 +32,14 @@ func (s *StringCodeGenerator) Retrieve() string {
 // Adds a toolchange operation (M6 Tn).
 func (s *StringCodeGenerator) Toolchange(t int) {
 	s.put(fmt.Sprintf("M6 T%d", t))
+	s.ForceModeWrite = true
 }
 
 // Adds a spindle operation (M3/M4/M5 [Sn]).
 func (s *StringCodeGenerator) Spindle(enabled, clockwise bool, speed float64) {
 	x := ""
 	if s.Position.State.SpindleEnabled != enabled || s.Position.State.SpindleClockwise != clockwise {
+		s.ForceModeWrite = true
 		if enabled && clockwise {
 			x += "M3"
 		} else if enabled && !clockwise {
@@ -65,6 +68,7 @@ func (s *StringCodeGenerator) Coolant(floodCoolant, mistCoolant bool) {
 			s.put("M7")
 		}
 	}
+	s.ForceModeWrite = true
 }
 
 // Sets feedmode (G93/G94/G95)
@@ -104,7 +108,7 @@ func (s *StringCodeGenerator) CutterCompensation(cutComp int) {
 func (s *StringCodeGenerator) Move(x, y, z float64, moveMode int) {
 	w := ""
 	pos := s.GetPosition()
-	if pos.State.MoveMode != moveMode {
+	if pos.State.MoveMode != moveMode || s.ForceModeWrite {
 		switch moveMode {
 		case vm.MoveModeNone:
 			return
@@ -120,6 +124,8 @@ func (s *StringCodeGenerator) Move(x, y, z float64, moveMode int) {
 			panic("Unknown move mode")
 		}
 	}
+
+	s.ForceModeWrite = false
 
 	if pos.X != x {
 		w += fmt.Sprintf("X%s", floatToString(x, s.Precision))

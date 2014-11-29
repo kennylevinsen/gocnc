@@ -5,8 +5,9 @@ import "fmt"
 
 type GrblGenerator struct {
 	BaseGenerator
-	Precision int
-	Write     func(string)
+	Precision      int
+	Write          func(string)
+	ForceModeWrite bool
 }
 
 // A no-op toolchange, as Grbl doesn't support it
@@ -18,6 +19,7 @@ func (s *GrblGenerator) Spindle(enabled, clockwise bool, speed float64) {
 	state := s.Position.State
 	x := ""
 	if state.SpindleEnabled != enabled || state.SpindleClockwise != clockwise {
+		s.ForceModeWrite = true
 		if enabled && clockwise {
 			x += "M3"
 		} else if enabled && !clockwise {
@@ -44,6 +46,7 @@ func (s *GrblGenerator) Coolant(floodCoolant, mistCoolant bool) {
 			s.Write("M7")
 		}
 	}
+	s.ForceModeWrite = true
 }
 
 func (s *GrblGenerator) FeedMode(feedMode int) {
@@ -73,7 +76,7 @@ func (s *GrblGenerator) CutterCompensation(cutComp int) {
 func (s *GrblGenerator) Move(x, y, z float64, moveMode int) {
 	w := ""
 	pos := s.GetPosition()
-	if pos.State.MoveMode != moveMode {
+	if pos.State.MoveMode != moveMode || s.ForceModeWrite {
 		switch moveMode {
 		case vm.MoveModeNone:
 			return
@@ -89,6 +92,8 @@ func (s *GrblGenerator) Move(x, y, z float64, moveMode int) {
 			panic("Unknown move mode")
 		}
 	}
+	s.ForceModeWrite = false
+
 	if pos.X != x {
 		w += fmt.Sprintf("X%s", floatToString(x, s.Precision))
 	}

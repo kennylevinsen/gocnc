@@ -22,27 +22,27 @@ func (vm *Machine) calcPos(stmt statement) (newX, newY, newZ, newI, newJ, newK f
 
 	if newX, err = stmt.get('X'); err != nil {
 		newX = pos.X
-	} else if !vm.Metric {
+	} else if vm.Imperial {
 		newX *= 25.4
 	}
 
 	if newY, err = stmt.get('Y'); err != nil {
 		newY = pos.Y
-	} else if !vm.Metric {
+	} else if vm.Imperial {
 		newY *= 25.4
 	}
 
 	if newZ, err = stmt.get('Z'); err != nil {
 		newZ = pos.Z
-	} else if !vm.Metric {
+	} else if vm.Imperial {
 		newZ *= 25.4
 	}
 
-	newI = stmt.getDefault('I', 0)
-	newJ = stmt.getDefault('J', 0)
-	newK = stmt.getDefault('K', 0)
+	newI = stmt.getDefault('I', 0.0)
+	newJ = stmt.getDefault('J', 0.0)
+	newK = stmt.getDefault('K', 0.0)
 
-	if !vm.Metric {
+	if vm.Imperial {
 		newI *= 25.4
 		newJ *= 25.4
 		newK *= 25.4

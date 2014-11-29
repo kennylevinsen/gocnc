@@ -75,7 +75,7 @@ func (vm *Machine) OptDrillSpeed() {
 // This optimization pass bails if the Z axis is moved simultaneously with any other axis,
 // or the input ends with the drill below Z0, in order to play it safe.
 // This pass is new, and therefore slightly experimental.
-func (vm *Machine) OptRouteGrouping() (err error) {
+func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.New(fmt.Sprintf("%s", r))
@@ -150,17 +150,16 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 	}
 
 	var (
-		curX, curY, curZ float64 = 0, 0, 0
-		sortedSets       []Set   = make([]Set, 0)
-		selectedSet      int
+		curVec      utils.Vector
+		sortedSets  []Set = make([]Set, 0)
+		selectedSet int
 	)
 
 	// Stupid difference calculator
-	diffFromCur := func(pos Position) float64 {
-		x := math.Max(curX, pos.X) - math.Min(curX, pos.X)
-		y := math.Max(curY, pos.Y) - math.Min(curY, pos.Y)
-		z := math.Max(curZ, pos.Z) - math.Min(curZ, pos.Z)
-		return math.Sqrt(math.Pow(x, 2) + math.Pow(y, 2) + math.Pow(z, 2))
+	xyDiff := func(pos utils.Vector, cur utils.Vector) float64 {
+		x := math.Abs(cur.X - pos.X)
+		y := math.Abs(cur.Y - pos.Y)
+		return math.Sqrt(math.Pow(x, 2) + math.Pow(y, 2))
 	}
 
 	// Sort the sets after distance from current position
@@ -169,14 +168,18 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 			if selectedSet == -1 {
 				selectedSet = idx
 			} else {
-				diff := diffFromCur(sets[idx][0])
-				other := diffFromCur(sets[selectedSet][0])
+				np := sets[idx][0]
+				pp := sets[selectedSet][0]
+				diff := xyDiff(np.Vector(), curVec)
+				other := xyDiff(pp.Vector(), curVec)
 				if diff < other {
+					selectedSet = idx
+				} else if np.Z > pp.Z {
 					selectedSet = idx
 				}
 			}
 		}
-		curX, curY, curZ = sets[selectedSet][0].X, sets[selectedSet][0].Y, sets[selectedSet][0].Z
+		curVec = sets[selectedSet][0].Vector()
 		sortedSets = append(sortedSets, sets[selectedSet])
 		sets = append(sets[0:selectedSet], sets[selectedSet+1:]...)
 		selectedSet = -1
@@ -194,7 +197,7 @@ func (vm *Machine) OptRouteGrouping() (err error) {
 		curPos := newPos[len(newPos)-1]
 
 		// Check if we should go to safety-height before moving
-		if math.Abs(curPos.X-pos.X) < vm.Tolerance && math.Abs(curPos.Y-pos.Y) < vm.Tolerance {
+		if xyDiff(curPos.Vector(), pos.Vector()) < tolerance {
 			if curPos.X != pos.X || curPos.Y != pos.Y {
 				// If we're not 100% precise...
 				step1 := curPos
@@ -258,6 +261,7 @@ func (vm *Machine) OptLiftSpeed() {
 
 // Kills redundant partial moves.
 // Calculates the unit-vector, and kills all incremental moves between A and B.
+// Deprecated by OptVector.
 func (vm *Machine) OptBogusMoves() {
 	var (
 		xstate, ystate, zstate       float64
@@ -295,7 +299,7 @@ func (vm *Machine) OptBogusMoves() {
 
 // Kills redundant partial moves.
 // Calculates the unit-vector, and kills all incremental moves between A and B.
-func (vm *Machine) OptVector() {
+func (vm *Machine) OptVector(tolerance float64) {
 	var (
 		vec1, vec2, vec3 utils.Vector
 		ready            int
@@ -310,25 +314,25 @@ func (vm *Machine) OptVector() {
 		}
 
 		if ready == 0 {
-			vec1 = utils.Vector{m.X, m.Y, m.Z}
+			vec1 = m.Vector()
 			ready++
 			goto appendpos
 		} else if ready == 1 {
-			vec2 = utils.Vector{m.X, m.Y, m.Z}
+			vec2 = m.Vector()
 			ready++
 			goto appendpos
 		} else if ready == 2 {
-			vec3 = utils.Vector{m.X, m.Y, m.Z}
+			vec3 = m.Vector()
 			ready++
 		} else {
 			vec1 = vec2
 			vec2 = vec3
-			vec3 = utils.Vector{m.X, m.Y, m.Z}
+			vec3 = m.Vector()
 		}
 
 		length1 = vec1.Diff(vec2).Norm() + vec2.Diff(vec3).Norm()
 		length2 = vec1.Diff(vec3).Norm()
-		if length1-length2 < vm.Tolerance {
+		if length1-length2 < tolerance {
 			npos[len(npos)-1] = m
 			vec2 = vec1
 			continue

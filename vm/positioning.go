@@ -2,6 +2,7 @@ package vm
 
 import "github.com/joushou/gocnc/gcode"
 import "math"
+
 import "fmt"
 
 // Retrieves position from top of stack
@@ -42,16 +43,23 @@ func (vm *Machine) calcPos(stmt statement) (newX, newY, newZ, newI, newJ, newK f
 	newK = stmt.getDefault('K', 0)
 
 	if !vm.Metric {
-		newI, newJ, newK = newI*25.4, newJ*25.4, newZ*25.4
+		newI *= 25.4
+		newJ *= 25.4
+		newK *= 25.4
 	}
 
 	if !vm.AbsoluteMove {
-		newX, newY, newZ = pos.X+newX, pos.Y+newY, pos.Z+newZ
+		newX += pos.X
+		newY += pos.Y
+		newZ += pos.Z
 	}
 
 	if !vm.AbsoluteArc {
-		newI, newJ, newK = pos.X+newI, pos.Y+newJ, pos.Z+newK
+		newI += pos.X
+		newJ += pos.Y
+		newK += pos.Z
 	}
+
 	return newX, newY, newZ, newI, newJ, newK
 }
 

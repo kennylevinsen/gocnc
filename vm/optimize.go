@@ -102,7 +102,6 @@ func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 			if lastz >= 0 && m.Z < 0 {
 				// Down move
 				sequenceStarted = true
-				curSet = append(curSet, m)
 
 				// Set drill feedrate
 				if m.State.MoveMode == MoveModeLinear && m.State.Feedrate > drillSpeed {
@@ -117,12 +116,22 @@ func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 				if sequenceStarted {
 					sets = append(sets, curSet)
 				}
+				sequenceStarted = false
 				curSet = make(Set, 0)
 				goto updateLast // Skip append
 			}
+
+		} else {
+			if m.Z < 0 && m.State.MoveMode == MoveModeRapid {
+				panic("Rapid move in stock detected")
+			}
 		}
+
 		if sequenceStarted {
 			// Regular move
+			if m.Z > 0 {
+				panic("Move above stock detected")
+			}
 			curSet = append(curSet, m)
 		}
 
@@ -157,9 +166,9 @@ func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 
 	// Stupid difference calculator
 	xyDiff := func(pos utils.Vector, cur utils.Vector) float64 {
-		x := math.Abs(cur.X - pos.X)
-		y := math.Abs(cur.Y - pos.Y)
-		return math.Sqrt(math.Pow(x, 2) + math.Pow(y, 2))
+		j := cur.Diff(pos)
+		j.Z = 0
+		return j.Norm()
 	}
 
 	// Sort the sets after distance from current position
@@ -186,8 +195,7 @@ func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 	}
 
 	// Reconstruct new position stack from sorted sections
-	newPos := make([]Position, 0)
-	newPos = append(newPos, vm.Positions[0]) // The first null-move
+	newPos := []Position{vm.Positions[0]} // Origin
 
 	addPos := func(pos Position) {
 		newPos = append(newPos, pos)
@@ -206,12 +214,7 @@ func (vm *Machine) OptRouteGrouping(tolerance float64) (err error) {
 				step1.Y = pos.Y
 				addPos(step1)
 			}
-			if pos.Z == safetyHeight {
-				// Redundant lift
-				return
-			} else {
-				addPos(pos)
-			}
+			addPos(pos)
 		} else {
 			step1 := curPos
 			step1.Z = safetyHeight
@@ -304,13 +307,19 @@ func (vm *Machine) OptVector(tolerance float64) {
 		vec1, vec2, vec3 utils.Vector
 		ready            int
 		length1, length2 float64
+		lastMoveMode     int
 		npos             []Position = make([]Position, 0)
 	)
 
 	for _, m := range vm.Positions {
-		if m.State.MoveMode != MoveModeRapid && m.State.MoveMode != MoveModeLinear {
+		if m.State.MoveMode != MoveModeLinear && m.State.MoveMode != MoveModeRapid {
 			ready = 0
 			goto appendpos
+		}
+
+		if m.State.MoveMode != lastMoveMode {
+			lastMoveMode = m.State.MoveMode
+			ready = 0
 		}
 
 		if ready == 0 {

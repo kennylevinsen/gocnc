@@ -53,6 +53,9 @@ Or, perhaps you only just want to know the work-area and estimated runtime:
 
       ./gocnc ~/gcode.nc
 
+To stop the job, press Ctrl-C. This will send a Ctrl-X to Grbl, stopping things immediately.
+For feedhold, press Ctrl-Z. Resume by pressing enter.
+
 Why Go?
 ====
 

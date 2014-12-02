@@ -3,6 +3,7 @@ package gcode
 import "strconv"
 import "strings"
 import "errors"
+import "fmt"
 
 //
 // The Node types
@@ -91,6 +92,13 @@ func (s *Block) AppendNode(n Node) {
 	s.Nodes = append(s.Nodes, n)
 }
 
+// Append multiple nodes ot the block.
+func (s *Block) AppendNodes(n ...Node) {
+	for _, m := range n {
+		s.AppendNode(m)
+	}
+}
+
 // Exports the block, using the provided floating point precision. Respects block-delete.
 func (s *Block) Export(precision int) string {
 	var k string
@@ -105,6 +113,72 @@ func (s *Block) Export(precision int) string {
 
 func (s *Block) Length() int {
 	return len(s.Nodes)
+}
+
+// Other utility functions
+
+// Finds a word with the specified address.
+func (s *Block) GetWord(address rune) (res float64, err error) {
+	found := false
+	for _, m := range s.Nodes {
+		if word, ok := m.(*Word); ok {
+			if word.Address == address {
+				if found {
+					return res, errors.New(fmt.Sprintf("Multiple instances of address '%c' in block", address))
+				}
+				found = true
+				res = word.Command
+			}
+		}
+	}
+	if !found {
+		return res, errors.New(fmt.Sprintf("'%c' not found in block", address))
+	}
+	return res, nil
+}
+
+// Same as GetWord, but has a default value.
+func (s *Block) GetWordDefault(address rune, def float64) (res float64) {
+	res, err := s.GetWord(address)
+	if err != nil {
+		return def
+	}
+	return res
+}
+
+// Retrieves all words with the specified address.
+func (s *Block) GetAllWords(address rune) (res []float64) {
+	for _, m := range s.Nodes {
+		if word, ok := m.(*Word); ok {
+			if word.Address == address {
+				res = append(res, word.Command)
+			}
+		}
+	}
+	return res
+}
+
+// Tests if one of the given addresses exist.
+func (s *Block) IncludesOneOf(addresses ...rune) (res bool) {
+	for _, m := range addresses {
+		_, err := s.GetWord(m)
+		if err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// Test if the specific word exists.
+func (s *Block) HasWord(address rune, command float64) (res bool) {
+	for _, m := range s.Nodes {
+		if word, ok := m.(*Word); ok {
+			if word.Address == address && word.Command == command {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 //
@@ -130,28 +204,6 @@ func (doc *Document) Export(precision int) string {
 	return strings.Join(l, "\n")
 }
 
-// Like Export, but reduces precision if a line ends up longer than maxLength.
-func (doc *Document) ExportMaxLength(precision, maxLength int) (string, error) {
-	l := make([]string, len(doc.Blocks))
-	origPrecision := precision
-	for idx, b := range doc.Blocks {
-		for {
-			l[idx] = b.Export(precision)
-			if precision == -1 {
-				precision = maxLength
-			} else if precision == 0 {
-				return "", errors.New("Unable to reach maximum length")
-			} else if len(l[idx]) > maxLength {
-				precision--
-			} else {
-				precision = origPrecision
-				break
-			}
-		}
-	}
-	return strings.Join(l, "\n"), nil
-}
-
 // Like Export, but uses as many digits as necessary for floating point.
 func (doc *Document) ToString() string {
 	return doc.Export(-1)
@@ -159,112 +211,4 @@ func (doc *Document) ToString() string {
 
 func (doc *Document) Length() int {
 	return len(doc.Blocks)
-}
-
-// Parses a string, and returns an AST.
-func Parse(input string) *Document {
-
-	var (
-		document    Document
-		curBlock    Block = Block{}
-		state       int   = 0
-		lastNewline int   = 0
-		buffer      string
-		address     rune
-	)
-
-	parseNormal := func(c rune, idx int) {
-		switch c {
-		case '/':
-			if idx-lastNewline == 0 {
-				curBlock.BlockDelete = true
-				lastNewline--
-			} else {
-				// TODO Error out!
-			}
-		case '%':
-			fm := Filemarker{}
-			curBlock.AppendNode(&fm)
-		case '(':
-			state = 1
-		case ';':
-			state = 2
-		case '\n':
-			document.AppendBlock(curBlock)
-			curBlock = Block{}
-			lastNewline = idx + 1
-		case ' ':
-			// Ignore
-			return
-		default:
-			if c >= 97 && c <= 122 {
-				state = 3
-				address = c - 32 // Make uppercase
-			} else if (c >= 65 && c <= 90) || c == 64 || c == 94 {
-				state = 3
-				address = c
-			} else {
-				// TODO Error out!
-			}
-		}
-	}
-
-	parseComment := func(c rune, idx int) {
-		switch c {
-		case ')':
-			state = 0
-			cm := Comment{buffer, false}
-			curBlock.AppendNode(&cm)
-			buffer = ""
-		case '\n':
-			// TODO Error out!
-			state = 0
-			cm := Comment{buffer, true}
-			curBlock.AppendNode(&cm)
-			buffer = ""
-			parseNormal(c, idx)
-		default:
-			buffer += string(c)
-		}
-	}
-
-	parseEOLComment := func(c rune, idx int) {
-		switch c {
-		case '\n':
-			state = 0
-			cm := Comment{buffer, true}
-			curBlock.AppendNode(&cm)
-			buffer = ""
-			parseNormal(c, idx)
-		default:
-			buffer += string(c)
-		}
-	}
-
-	parseWord := func(c rune, idx int) {
-		if (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 43 {
-			buffer += string(c)
-		} else {
-			state = 0
-			f, _ := strconv.ParseFloat(string(buffer), 64)
-			w := Word{address, f}
-			curBlock.AppendNode(&w)
-			buffer = ""
-			parseNormal(c, idx)
-		}
-	}
-
-	for idx, c := range input + "\n" {
-		switch state {
-		case 0:
-			parseNormal(c, idx)
-		case 1:
-			parseComment(c, idx)
-		case 2:
-			parseEOLComment(c, idx)
-		case 3:
-			parseWord(c, idx)
-		}
-	}
-	return &document
 }

@@ -2,6 +2,7 @@ package main
 
 import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vm"
+import "github.com/joushou/gocnc/optimize"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
 import "github.com/cheggaaa/pb"
@@ -277,25 +278,25 @@ func main() {
 
 	// Optimize as requested
 	if *optDrillSpeed && *opt {
-		machine.OptDrillSpeed()
+		optimize.OptDrillSpeed(&machine)
 	}
 
 	if *optRouteGrouping && *opt {
-		if err := machine.OptRouteGrouping(*rtolerance); err != nil {
+		if err := optimize.OptRouteGrouping(&machine, *rtolerance); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
 		}
 	}
 
 	if *optBogusMove && *opt {
-		machine.OptBogusMoves()
+		optimize.OptBogusMoves(&machine)
 	}
 
 	if *optVector && *opt {
-		machine.OptVector(*vtolerance)
+		optimize.OptVector(&machine, *vtolerance)
 	}
 
 	if *optLiftSpeed && *opt {
-		machine.OptLiftSpeed()
+		optimize.OptLiftSpeed(&machine)
 	}
 
 	// Apply requested modifications

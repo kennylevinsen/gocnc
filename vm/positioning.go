@@ -16,31 +16,31 @@ func (vm *Machine) addPos(pos Position) {
 }
 
 // Calculates the absolute position of the given statement, including optional I, J, K parameters
-func (vm *Machine) calcPos(stmt statement) (newX, newY, newZ, newI, newJ, newK float64) {
+func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
 	var err error
 
-	if newX, err = stmt.get('X'); err != nil {
+	if newX, err = stmt.GetWord('X'); err != nil {
 		newX = pos.X
 	} else if vm.Imperial {
 		newX *= 25.4
 	}
 
-	if newY, err = stmt.get('Y'); err != nil {
+	if newY, err = stmt.GetWord('Y'); err != nil {
 		newY = pos.Y
 	} else if vm.Imperial {
 		newY *= 25.4
 	}
 
-	if newZ, err = stmt.get('Z'); err != nil {
+	if newZ, err = stmt.GetWord('Z'); err != nil {
 		newZ = pos.Z
 	} else if vm.Imperial {
 		newZ *= 25.4
 	}
 
-	newI = stmt.getDefault('I', 0.0)
-	newJ = stmt.getDefault('J', 0.0)
-	newK = stmt.getDefault('K', 0.0)
+	newI = stmt.GetWordDefault('I', 0.0)
+	newJ = stmt.GetWordDefault('J', 0.0)
+	newK = stmt.GetWordDefault('K', 0.0)
 
 	if vm.Imperial {
 		newI *= 25.4
@@ -64,13 +64,13 @@ func (vm *Machine) calcPos(stmt statement) (newX, newY, newZ, newI, newJ, newK f
 }
 
 // Adds a simple linear move
-func (vm *Machine) positioning(stmt statement) {
+func (vm *Machine) move(stmt gcode.Block) {
 	newX, newY, newZ, _, _, _ := vm.calcPos(stmt)
 	vm.addPos(Position{vm.State, newX, newY, newZ})
 }
 
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) approximateArc(stmt statement) {
+func (vm *Machine) arc(stmt gcode.Block) {
 	var (
 		startPos                           Position = vm.curPos()
 		endX, endY, endZ, endI, endJ, endK float64  = vm.calcPos(stmt)
@@ -82,7 +82,7 @@ func (vm *Machine) approximateArc(stmt statement) {
 	vm.State.MoveMode = MoveModeLinear
 
 	// Read the additional rotation parameter
-	if pp, err := stmt.get('P'); err == nil {
+	if pp, err := stmt.GetWord('P'); err == nil {
 		P = pp
 	}
 
@@ -92,20 +92,20 @@ func (vm *Machine) approximateArc(stmt statement) {
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.X, startPos.Y, startPos.Z, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', x}, gcode.Word{'Y', y}, gcode.Word{'Z', z}
-			vm.positioning(statement{&wx, &wy, &wz})
+			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
 		}
 	case PlaneXZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Z, startPos.X, startPos.Y, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', y}, gcode.Word{'Y', z}, gcode.Word{'Z', x}
-			vm.positioning(statement{&wx, &wy, &wz})
+			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
 
 		}
 	case PlaneYZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Y, startPos.Z, startPos.X, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
 			wx, wy, wz := gcode.Word{'X', z}, gcode.Word{'Y', x}, gcode.Word{'Z', y}
-			vm.positioning(statement{&wx, &wy, &wz})
+			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
 		}
 	}
 

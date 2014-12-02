@@ -259,7 +259,11 @@ func main() {
 
 	// Parse
 	code := string(fhandle)
-	document := gcode.Parse(code)
+	document, err := gcode.Parse(code)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Parse error: %s\n", err)
+		os.Exit(3)
+	}
 
 	// Run through the VM
 	machine.Init()

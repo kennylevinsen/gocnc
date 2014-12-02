@@ -59,16 +59,16 @@ import "errors"
 // TODO
 //
 //   TESTS?! At least one per code!
-//
-//   Handle multiple G/M codes on the same line (slice of pairs instead of map)
-//   Split G/M handling out of the run function
-//   Handle G/M-code priority properly
+//   Error cases (Extra/Missing arguments, etc.)
+//   Execution order
+//   Modal groups
 //   Better comments
 //   Implement various canned cycles
 //   Variables (basic support?)
 //   Subroutines
-//   Incremental axes
 //   A, B, C axes
+//
+
 //
 // State structs and constants
 //
@@ -143,81 +143,11 @@ type Machine struct {
 }
 
 //
-// Struct and helper functions to aid execution
-//
-type statement []*gcode.Word
-
-func (stmt statement) get(address rune) (res float64, err error) {
-	found := false
-	for _, m := range stmt {
-		if m.Address == address {
-			if found {
-				return res, errors.New(fmt.Sprintf("Multiple instances of address '%c' in block", address))
-			}
-			found = true
-			res = m.Command
-		}
-	}
-	if !found {
-		return res, errors.New(fmt.Sprintf("'%c' not found in block", address))
-	}
-	return res, nil
-}
-
-func (stmt statement) getDefault(address rune, def float64) (res float64) {
-	res, err := stmt.get(address)
-	if err != nil {
-		return def
-	}
-	return res
-}
-
-func (stmt statement) getAll(address rune) (res []float64) {
-	for _, m := range stmt {
-		if m.Address == address {
-			res = append(res, m.Command)
-		}
-	}
-	return res
-}
-
-func (stmt statement) includes(addresses ...rune) (res bool) {
-	for _, m := range addresses {
-		_, err := stmt.get(m)
-		if err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func (stmt statement) hasWord(address rune, command float64) (res bool) {
-	for _, m := range stmt {
-		if m.Address == address && m.Command == command {
-			return true
-		}
-	}
-	return false
-}
-
-//
 // Dispatch
 //
 
-func (vm *Machine) run(stmt statement) (err error) {
-	if vm.Completed {
-		// A stop had previously been issued
-		return
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			err = errors.New(fmt.Sprintf("%s", r))
-		}
-	}()
-
-	// G-codes
-	for _, g := range stmt.getAll('G') {
+func (vm *Machine) handleG(stmt gcode.Block) {
+	for _, g := range stmt.GetAllWords('G') {
 		switch g {
 		case 0:
 			vm.State.MoveMode = MoveModeRapid
@@ -267,16 +197,10 @@ func (vm *Machine) run(stmt statement) (err error) {
 			panic(fmt.Sprintf("G%g not supported", g))
 		}
 	}
+}
 
-	for _, t := range stmt.getAll('T') {
-		if t < 0 {
-			panic("Tool must be non-negative")
-		}
-		vm.NextTool = int(t)
-	}
-
-	// M-codes
-	for _, m := range stmt.getAll('M') {
+func (vm *Machine) handleM(stmt gcode.Block) {
+	for _, m := range stmt.GetAllWords('M') {
 		switch m {
 		case 2:
 			vm.Completed = true
@@ -303,9 +227,19 @@ func (vm *Machine) run(stmt statement) (err error) {
 			panic(fmt.Sprintf("M%g not supported", m))
 		}
 	}
+}
 
-	// F-codes
-	for _, f := range stmt.getAll('F') {
+func (vm *Machine) handleT(stmt gcode.Block) {
+	for _, t := range stmt.GetAllWords('T') {
+		if t < 0 {
+			panic("Tool must be non-negative")
+		}
+		vm.NextTool = int(t)
+	}
+}
+
+func (vm *Machine) handleF(stmt gcode.Block) {
+	for _, f := range stmt.GetAllWords('F') {
 		if vm.Imperial {
 			f *= 25.4
 		}
@@ -314,24 +248,46 @@ func (vm *Machine) run(stmt statement) (err error) {
 		}
 		vm.State.Feedrate = f
 	}
+}
 
-	// S-codes
-	for _, s := range stmt.getAll('S') {
+func (vm *Machine) handleS(stmt gcode.Block) {
+	for _, s := range stmt.GetAllWords('S') {
 		if s < 0 {
 			panic("Spindle speed must be greater than or equal to zero")
 		}
 		vm.State.SpindleSpeed = s
 	}
+}
 
-	if stmt.includes('A', 'B', 'C', 'U', 'V', 'W') {
+func (vm *Machine) run(stmt gcode.Block) (err error) {
+	if vm.Completed {
+		// A stop had previously been issued
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New(fmt.Sprintf("%s", r))
+		}
+	}()
+
+	// This completely ignores modal groups, command order and extra arguments.
+	vm.handleT(stmt)
+	vm.handleS(stmt)
+	vm.handleF(stmt)
+	vm.handleG(stmt)
+	vm.handleM(stmt)
+
+	// S-codes
+	if stmt.IncludesOneOf('A', 'B', 'C', 'U', 'V', 'W') {
 		panic("Only X, Y and Z axes are supported")
 	}
 
-	if stmt.includes('X', 'Y', 'Z') {
+	if stmt.IncludesOneOf('X', 'Y', 'Z') {
 		if vm.State.MoveMode == MoveModeCWArc || vm.State.MoveMode == MoveModeCCWArc {
-			vm.approximateArc(stmt)
+			vm.arc(stmt)
 		} else if vm.State.MoveMode == MoveModeLinear || vm.State.MoveMode == MoveModeRapid {
-			vm.positioning(stmt)
+			vm.move(stmt)
 		} else {
 			panic("Move attempted without an active move mode")
 		}
@@ -355,18 +311,12 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 			continue
 		}
 
-		stmt := make(statement, 0)
-		for _, n := range b.Nodes {
-			if word, ok := n.(*gcode.Word); ok {
-				stmt = append(stmt, word)
-			}
-		}
-		if err := vm.run(stmt); err != nil {
+		if err := vm.run(b); err != nil {
 			return errors.New(fmt.Sprintf("line %d: %s", idx+1, err))
 		}
 	}
 	vm.finalize()
-	return
+	return nil
 }
 
 // Initialize the VM to sane default values
@@ -379,6 +329,10 @@ func (vm *Machine) Init() {
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
 }
+
+//
+// Debug assistance
+//
 
 // Dump position in (sort of) human readable format
 func (m *Position) Dump() {

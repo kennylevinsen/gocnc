@@ -63,6 +63,9 @@ func Parse(input string) (doc *Document, err error) {
 			document.AppendBlock(curBlock)
 			curBlock = Block{}
 			lastNewline = idx + 1
+		case '\r':
+			// Ignore
+			return
 		case ' ':
 			// Ignore
 			return
@@ -77,7 +80,7 @@ func Parse(input string) (doc *Document, err error) {
 				address = c
 			} else {
 				// No clue
-				parserPanic(idx, fmt.Sprintf("Expected word address, found %c", c))
+				parserPanic(idx, fmt.Sprintf("Expected word address, found [%c]", c))
 			}
 		}
 	}

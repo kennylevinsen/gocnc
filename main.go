@@ -65,6 +65,10 @@ var (
 	machine    vm.Machine
 )
 
+//
+// WaitGenerator
+//
+
 type WaitGenerator struct {
 	export.BaseGenerator
 }
@@ -82,6 +86,10 @@ func (m *WaitGenerator) Coolant(bool, bool) {
 		time.Sleep(time.Duration(*spindleWait) * time.Second)
 	}
 }
+
+//
+// ManualGenerator
+//
 
 // A generator implement user interaction
 type ManualGenerator struct {
@@ -243,6 +251,10 @@ func printStats(m *vm.Machine) {
 
 }
 
+//
+// Application flow
+//
+
 func main() {
 	// Parse arguments
 	kingpin.Parse()
@@ -277,26 +289,28 @@ func main() {
 	}
 
 	// Optimize as requested
-	if *optDrillSpeed && *opt {
-		optimize.OptDrillSpeed(&machine)
-	}
-
-	if *optRouteGrouping && *opt {
-		if err := optimize.OptRouteGrouping(&machine, *rtolerance); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
+	if *opt {
+		if *optDrillSpeed {
+			optimize.OptDrillSpeed(&machine)
 		}
-	}
 
-	if *optBogusMove && *opt {
-		optimize.OptBogusMoves(&machine)
-	}
+		if *optRouteGrouping {
+			if err := optimize.OptRouteGrouping(&machine, *rtolerance); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
+			}
+		}
 
-	if *optVector && *opt {
-		optimize.OptVector(&machine, *vtolerance)
-	}
+		if *optBogusMove {
+			optimize.OptBogusMoves(&machine)
+		}
 
-	if *optLiftSpeed && *opt {
-		optimize.OptLiftSpeed(&machine)
+		if *optVector {
+			optimize.OptVector(&machine, *vtolerance)
+		}
+
+		if *optLiftSpeed {
+			optimize.OptLiftSpeed(&machine)
+		}
 	}
 
 	// Apply requested modifications

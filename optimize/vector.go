@@ -1,13 +1,13 @@
 package optimize
 
 import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/utils"
+import "github.com/joushou/gocnc/vector"
 
 // Kills redundant partial moves.
 // Calculates the unit-vector, and kills all incremental moves between A and B.
 func OptVector(machine *vm.Machine, tolerance float64) {
 	var (
-		vec1, vec2, vec3 utils.Vector
+		vec1, vec2, vec3 vector.Vector
 		ready            int
 		length1, length2 float64
 		lastMoveMode     int

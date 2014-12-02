@@ -1,15 +1,15 @@
 package optimize
 
 import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/utils"
+import "github.com/joushou/gocnc/vector"
 
 // Kills redundant partial moves.
 // Calculates the unit-vector, and kills all incremental moves between A and B.
 // Deprecated by OptVector.
 func OptBogusMoves(machine *vm.Machine) {
 	var (
-		lastvec utils.Vector
-		state   utils.Vector
+		lastvec vector.Vector
+		state   vector.Vector
 		npos    []vm.Position = make([]vm.Position, 0)
 	)
 
@@ -18,7 +18,7 @@ func OptBogusMoves(machine *vm.Machine) {
 		state = m.Vector()
 
 		if m.State.MoveMode != vm.MoveModeRapid && m.State.MoveMode != vm.MoveModeLinear {
-			lastvec = utils.Vector{}
+			lastvec = vector.Vector{}
 			continue
 		}
 

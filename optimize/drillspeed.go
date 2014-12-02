@@ -1,7 +1,7 @@
 package optimize
 
 import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/utils"
+import "github.com/joushou/gocnc/vector"
 
 //
 // Ideas for other optimization steps:
@@ -16,7 +16,7 @@ import "github.com/joushou/gocnc/utils"
 // at that location will use vm.MoveModeRapid to go to the deepest previous known Z-height.
 func OptDrillSpeed(machine *vm.Machine) {
 	var (
-		last       utils.Vector
+		last       vector.Vector
 		npos       []vm.Position = make([]vm.Position, 0)
 		drillStack []vm.Position = make([]vm.Position, 0)
 	)

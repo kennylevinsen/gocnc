@@ -1,7 +1,7 @@
 package optimize
 
 import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/utils"
+import "github.com/joushou/gocnc/vector"
 
 import "errors"
 import "fmt"
@@ -97,13 +97,13 @@ func OptRouteGrouping(machine *vm.Machine, tolerance float64) (err error) {
 	}
 
 	var (
-		curVec      utils.Vector
+		curVec      vector.Vector
 		sortedSets  []Set = make([]Set, 0)
 		selectedSet int
 	)
 
 	// Stupid difference calculator
-	xyDiff := func(pos utils.Vector, cur utils.Vector) float64 {
+	xyDiff := func(pos vector.Vector, cur vector.Vector) float64 {
 		j := cur.Diff(pos)
 		j.Z = 0
 		return j.Norm()

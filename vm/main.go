@@ -1,7 +1,7 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
-import "github.com/joushou/gocnc/utils"
+import "github.com/joushou/gocnc/vector"
 import "fmt"
 import "errors"
 
@@ -123,8 +123,8 @@ type Position struct {
 	X, Y, Z float64
 }
 
-func (p Position) Vector() utils.Vector {
-	return utils.Vector{p.X, p.Y, p.Z}
+func (p Position) Vector() vector.Vector {
+	return vector.Vector{p.X, p.Y, p.Z}
 }
 
 // Machine state and settings

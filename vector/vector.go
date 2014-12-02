@@ -1,4 +1,4 @@
-package utils
+package vector
 
 import "math"
 import "fmt"

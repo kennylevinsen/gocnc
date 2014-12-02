@@ -6,14 +6,14 @@ import "github.com/joushou/gocnc/vector"
 import "errors"
 import "fmt"
 
-// Reduces moves between routing operations.
+// Reduces moves between paths.
 // It does this by scanning through position stack, grouping moves that move from >= Z0 to < Z0.
 // These moves are then sorted after closest to previous position, starting at X0 Y0,
 // and moves to groups recalculated as they are inserted in a new stack.
 // This optimization pass bails if the Z axis is moved simultaneously with any other axis,
 // or the input ends with the drill below Z0, in order to play it safe.
 // This pass is new, and therefore slightly experimental.
-func OptRouteGrouping(machine *vm.Machine, tolerance float64) (err error) {
+func OptPathGrouping(machine *vm.Machine, tolerance float64) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors.New(fmt.Sprintf("%s", r))

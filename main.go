@@ -29,12 +29,12 @@ var (
 	stats     = kingpin.Flag("stats", "Print gcode metrics").Default("true").Bool()
 	autoStart = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
 
-	opt              = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
-	optBogusMove     = kingpin.Flag("optbogus", "Remove all moves that would be an implicit part of another move (Deprecated for optvector)").Default("false").Bool()
-	optVector        = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
-	optLiftSpeed     = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
-	optDrillSpeed    = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
-	optRouteGrouping = kingpin.Flag("optroute", "Optimize path to groups of routing moves").Default("false").Bool()
+	opt             = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
+	optBogusMove    = kingpin.Flag("optbogus", "Remove all moves that would be an implicit part of another move (Deprecated for optvector)").Default("false").Bool()
+	optVector       = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
+	optLiftSpeed    = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
+	optDrillSpeed   = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
+	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("false").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
 	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()
@@ -294,9 +294,9 @@ func main() {
 			optimize.OptDrillSpeed(&machine)
 		}
 
-		if *optRouteGrouping {
-			if err := optimize.OptRouteGrouping(&machine, *rtolerance); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Could not execute route grouping: %s\n", err)
+		if *optPathGrouping {
+			if err := optimize.OptPathGrouping(&machine, *rtolerance); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not execute path grouping: %s\n", err)
 			}
 		}
 

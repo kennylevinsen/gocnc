@@ -14,6 +14,7 @@ import "bufio"
 import "fmt"
 import "os"
 import "os/signal"
+import "syscall"
 import "time"
 import "strconv"
 
@@ -421,6 +422,7 @@ func main() {
 
 		sigchan := make(chan os.Signal, 1)
 		signal.Notify(sigchan, os.Interrupt)
+		signal.Notify(sigchan, syscall.SIGTSTP)
 
 		go func() {
 			for sig := range sigchan {
@@ -428,6 +430,13 @@ func main() {
 					fmt.Fprintf(os.Stderr, "\nStopping...\n")
 					s.Stop()
 					os.Exit(5)
+				} else if sig == syscall.SIGTSTP {
+					s.Pause()
+					fmt.Fprintf(os.Stderr, "\nPaused. Press <ENTER> to continue")
+					reader := bufio.NewReader(os.Stdin)
+					_, _ = reader.ReadString('\n')
+					s.Start()
+					pBar.Update()
 				}
 			}
 		}()

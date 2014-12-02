@@ -34,6 +34,7 @@ var (
 	optVector       = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
 	optLiftSpeed    = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
 	optDrillSpeed   = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
+	optFloatingZ    = kingpin.Flag("optfloat", "Remove bogus moves above Z0 (floating Z)").Default("true").Bool()
 	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("false").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
@@ -292,6 +293,10 @@ func main() {
 	if *opt {
 		if *optDrillSpeed {
 			optimize.OptDrillSpeed(&machine)
+		}
+
+		if *optFloatingZ {
+			optimize.OptFloatingZ(&machine)
 		}
 
 		if *optPathGrouping {

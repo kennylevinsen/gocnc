@@ -63,7 +63,7 @@ So, I wrote the new tool in Go. What took up to 2 minutes through PyPy took me 1
 Features
 ====
 
-* Optimization (Route grouping, for example. All configurable with command-line parameters)
+* Optimization (Path grouping, vector optimization, lift speed, .... All configurable with command-line parameters)
 * Simple gcode output (Handles arcs and canned cycles internally, outputting only G0 and G1 for moves, and a few other things, such as feedrate mode)
 * Manual tool-changes (Moves to a configurable position, turns off spindle of possible and waits for user-entry of new tool-length to compensate for in the rest of the program)
 * Manual spindle and coolant control prompts (configurable)
@@ -100,7 +100,7 @@ The optimization passes can be summarized as:
 * Remove redundant code (Does not change behaviour)
 * Use rapid moves Z-axis lift and drill moves where possible
 * Vector optimization (Removes moves which cause a path deviation below the tolerance)
-* Group route operations, to minimize time spent seeking around
+* Group paths, to minimize time spent seeking around
 
 The last is by far the most complicated, and results in the largest gain. The slower the machine, the larger the gain. For my very fast shapeoko, I get ~15-20% speedup on the tests I have made, which will become much more with more sane maximum speeds. It is only really useful for 2D stuff, and automatically bails out with a warning when it might be unsafe to run.
 
@@ -111,8 +111,8 @@ In the future, more functionality will be soft-implemented, such as peck drillin
 Notes
 ====
 
-Route grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--no-optroute"
+Path grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--no-optpath". I fix the cases as I meet them - Open an issue if one is found.
 
-gocnc does *not* honor modal group order, but simply performs all known commands on a line/block (And fails on unknown commands). Modal group handling might be relevant, but some components might be difficult to implement, as gocnc is designed to only update states if there is a spindle move to associate it with.
+gocnc does *not* honor modal groups or execution order, but simply performs all known commands on a line/block (And fails on unknown commands). Modal group handling might be relevant, but some components could be annoying to implement, as gocnc is designed to only update states if there is a spindle move to associate it with. This hasn't been a problem with any of the gcode I have met so far.
 
 gocnc currently use a fork of goserial, as goserial handles a lot of things poorly. When my patches reach mainline, it will be reverting to using the standard variant.

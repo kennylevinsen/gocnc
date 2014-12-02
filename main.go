@@ -35,7 +35,7 @@ var (
 	optLiftSpeed    = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
 	optDrillSpeed   = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
 	optFloatingZ    = kingpin.Flag("optfloat", "Remove bogus moves above Z0 (floating Z)").Default("true").Bool()
-	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("false").Bool()
+	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("true").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
 	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()

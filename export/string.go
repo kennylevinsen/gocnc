@@ -2,6 +2,7 @@ package export
 
 import "github.com/joushou/gocnc/vm"
 import "fmt"
+import "strings"
 
 type StringCodeGenerator struct {
 	BaseGenerator
@@ -22,11 +23,7 @@ func (s *StringCodeGenerator) put(x string) {
 
 // Fetch the generated gcodes.
 func (s *StringCodeGenerator) Retrieve() string {
-	z := ""
-	for _, x := range s.Lines {
-		z += fmt.Sprintf("%s\n", x)
-	}
-	return z
+	return strings.Join(s.Lines, "\n")
 }
 
 // Adds a toolchange operation (M6 Tn).

@@ -117,6 +117,9 @@ func Parse(input string) (doc *Document, err error) {
 			// [0-9\.\-\+]
 			buffer += string(c)
 		} else {
+			if len(buffer) == 0 {
+				parserPanic(idx, fmt.Sprintf("Expected word command, found [%c]", c))
+			}
 			// End of command
 			state = normal
 			f, _ := strconv.ParseFloat(string(buffer), 64)

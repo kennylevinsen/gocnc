@@ -1,7 +1,6 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
-import "github.com/joushou/gocnc/vector"
 import "math"
 
 import "fmt"
@@ -102,13 +101,11 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 		panic("Invalid arc statement")
 	}
 
-	if deviation := math.Abs((radius2-radius1)/radius1) * 100; deviation > 0.6 {
-		e := vector.Vector{e1, e2, e3}
-		m := vector.Vector{e1 - math.Abs(c1-s1), e2 - math.Abs(c2-s2), e3}
-		x := e.Diff(m).Norm()
-		if x > 0.1 {
-			panic(fmt.Sprintf("Radius deviation of %f percent and %f mm", deviation, x))
-		}
+	deviation := math.Abs((radius2-radius1)/radius1) * 100
+	rDiff := math.Abs(radius2-radius1)
+
+	if (rDiff > 0.005 && deviation > 0.1) || rDiff > 0.5 {
+		panic(fmt.Sprintf("Radius deviation of %f percent and %f mm", deviation, rDiff))
 	}
 
 	theta1 := math.Atan2((s2 - c2), (s1 - c1))

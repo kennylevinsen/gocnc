@@ -139,13 +139,15 @@ type Machine struct {
 	MaxArcDeviation  float64
 	MinArcLineLength float64
 	Tolerance        float64
+	StoredPos1       vector.Vector
+	StoredPos2       vector.Vector
 	Positions        []Position
 }
 
 //
 // Dispatch
 //
-
+/*
 func (vm *Machine) handleG(stmt gcode.Block) {
 	for _, g := range stmt.GetAllWords('G') {
 		switch g {
@@ -169,6 +171,8 @@ func (vm *Machine) handleG(stmt gcode.Block) {
 			vm.Imperial = true
 		case 21:
 			vm.Imperial = false
+		case 28:
+			// HACK
 		case 40:
 			vm.State.CutterCompensation = CutCompModeNone
 		case 41:
@@ -250,6 +254,8 @@ func (vm *Machine) handleF(stmt gcode.Block) {
 	}
 }
 
+*/
+
 func (vm *Machine) handleS(stmt gcode.Block) {
 	for _, s := range stmt.GetAllWords('S') {
 		if s < 0 {
@@ -259,39 +265,402 @@ func (vm *Machine) handleS(stmt gcode.Block) {
 	}
 }
 
+func (vm *Machine) feedRateMode(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("feedRateModeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			oldMode := vm.State.FeedMode
+			switch w.Command {
+			case 93:
+				vm.State.FeedMode = FeedModeInvTime
+			case 94:
+				vm.State.FeedMode = FeedModeUnitsMin
+			case 95:
+				vm.State.FeedMode = FeedModeUnitsRev
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			if vm.State.FeedMode != oldMode {
+				// Ensure that feedrate is cleared
+				vm.State.Feedrate = 0
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+
+}
+
+func (vm *Machine) feedRate(stmt *gcode.Block) {
+	if val, err := stmt.GetWord('F'); err == nil {
+		vm.State.Feedrate = val
+		stmt.RemoveAddress('F')
+	} else if vm.State.FeedMode == FeedModeInvTime {
+		vm.State.Feedrate = -1
+	}
+}
+
+func (vm *Machine) spindleSpeed(stmt *gcode.Block) {
+	if val, err := stmt.GetWord('S'); err == nil {
+		vm.State.SpindleSpeed = val
+		stmt.RemoveAddress('S')
+	}
+}
+
+func (vm *Machine) nextTool(stmt *gcode.Block) {
+	if val, err := stmt.GetWord('T'); err == nil {
+		vm.NextTool = int(val)
+		stmt.RemoveAddress('T')
+	}
+}
+
+func (vm *Machine) toolChange(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("toolChangeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'M' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 6:
+				if vm.NextTool == -1 {
+					panic("Toolchange attempted without a defined tool")
+				}
+				vm.State.Tool = vm.NextTool
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+
+}
+
+func (vm *Machine) setSpindle(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("spindleGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'M' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 3:
+				vm.State.SpindleEnabled = true
+				vm.State.SpindleClockwise = true
+			case 4:
+				vm.State.SpindleEnabled = true
+				vm.State.SpindleClockwise = false
+			case 5:
+				vm.State.SpindleEnabled = false
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+
+}
+
+func (vm *Machine) setCoolant(stmt *gcode.Block) {
+	// TODO Handle M7 and M8 on same line
+	if w, err := stmt.GetModalGroup("coolantGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'M' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 7:
+				vm.State.MistCoolant = true
+			case 8:
+				vm.State.FloodCoolant = true
+			case 9:
+				vm.State.MistCoolant = false
+				vm.State.FloodCoolant = false
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setPlane(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("planeSelectionGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 17:
+				vm.MovePlane = PlaneXY
+			case 18:
+				vm.MovePlane = PlaneXZ
+			case 19:
+				vm.MovePlane = PlaneYZ
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setUnits(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("unitsGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 20:
+				vm.Imperial = true
+			case 21:
+				vm.Imperial = false
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setCutterCompensation(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("cutterCompensationModeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 40:
+				vm.State.CutterCompensation = CutCompModeNone
+			case 41:
+				vm.State.CutterCompensation = CutCompModeOuter
+			case 42:
+				vm.State.CutterCompensation = CutCompModeInner
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setCoordinateSystem(stmt *gcode.Block) {
+	// TODO Implement coordinate system offsets!
+	if w, err := stmt.GetModalGroup("coordinateSystemGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 53:
+				// Ignore!
+			case 54:
+				// Ignore!
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setDistanceMode(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("distanceModeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 90:
+				vm.AbsoluteMove = true
+			case 91:
+				vm.AbsoluteMove = false
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) nonModals(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("nonModalGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 4:
+				// TODO Handle!!!
+			case 28:
+				oldMode := vm.State.MoveMode
+				vm.State.MoveMode = MoveModeRapid
+				if stmt.IncludesOneOf('X', 'Y', 'Z') {
+					vm.move(*stmt)
+					stmt.RemoveAddress('X', 'Y', 'Z')
+				}
+				vm.addPos(Position{vm.State, vm.StoredPos1.X, vm.StoredPos1.Y, vm.StoredPos1.Z})
+				vm.State.MoveMode = oldMode
+			case 28.1:
+				pos := vm.curPos()
+				vm.StoredPos1 = pos.Vector()
+			case 30:
+				oldMode := vm.State.MoveMode
+				vm.State.MoveMode = MoveModeRapid
+				if stmt.IncludesOneOf('X', 'Y', 'Z') {
+					vm.move(*stmt)
+					stmt.RemoveAddress('X', 'Y', 'Z')
+				}
+				vm.addPos(Position{vm.State, vm.StoredPos2.X, vm.StoredPos2.Y, vm.StoredPos2.Z})
+				vm.State.MoveMode = oldMode
+			case 30.1:
+				pos := vm.curPos()
+				vm.StoredPos2 = pos.Vector()
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) setMove(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("motionGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 0:
+				vm.State.MoveMode = MoveModeRapid
+			case 1:
+				vm.State.MoveMode = MoveModeLinear
+			case 2:
+				vm.State.MoveMode = MoveModeCWArc
+			case 3:
+				vm.State.MoveMode = MoveModeCCWArc
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+
+	if stmt.IncludesOneOf('A', 'B', 'C', 'U', 'V', 'W') {
+		panic("Only X, Y and Z axes are supported")
+	}
+
+	if stmt.IncludesOneOf('X', 'Y', 'Z') {
+		if vm.State.FeedMode == FeedModeInvTime && vm.State.Feedrate == -1 && vm.State.MoveMode != MoveModeRapid {
+			panic("Non-rapid inverse time feed mode move attempted without a set feedrate")
+		}
+		if vm.State.MoveMode == MoveModeCWArc || vm.State.MoveMode == MoveModeCCWArc {
+			vm.arc(*stmt)
+			stmt.RemoveAddress('X', 'Y', 'Z', 'I', 'J', 'K', 'P')
+		} else if vm.State.MoveMode == MoveModeLinear || vm.State.MoveMode == MoveModeRapid {
+			vm.move(*stmt)
+			stmt.RemoveAddress('X', 'Y', 'Z')
+		} else {
+			panic(fmt.Sprintf("Move attempted wihtout an active move mode: %s", stmt.Export(-1)))
+		}
+	}
+}
+
+func (vm *Machine) setStop(stmt *gcode.Block) {
+	// TODO implement
+	if w, err := stmt.GetModalGroup("stoppingGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'M' {
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+
+			switch w.Command {
+			case 2:
+				vm.Completed = true
+			case 30:
+				vm.Completed = true
+			default:
+				panic(fmt.Sprintf("GetModalGroup returned unexpected command %s", w.Export(-1)))
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		panic(fmt.Sprintf("%s", err))
+	}
+}
+
+func (vm *Machine) postCheck(stmt *gcode.Block) {
+	for _, w := range stmt.Nodes {
+		if _, ok := w.(*gcode.Word); ok {
+			panic(fmt.Sprintf("Unsupported commands left in block: %s", stmt.Export(-1)))
+		}
+	}
+}
+
+/*func (vm *Machine) moveGroup(smtmt gcode.Block) {
+if stmt.IncludesOneOf(
+*/
 func (vm *Machine) run(stmt gcode.Block) (err error) {
 	if vm.Completed {
 		// A stop had previously been issued
 		return
 	}
 
-	defer func() {
+	/*defer func() {
 		if r := recover(); r != nil {
 			err = errors.New(fmt.Sprintf("%s", r))
 		}
-	}()
+	}()*/
 
-	// This completely ignores modal groups, command order and extra arguments.
-	vm.handleT(stmt)
-	vm.handleS(stmt)
-	vm.handleF(stmt)
-	vm.handleG(stmt)
-	vm.handleM(stmt)
-
-	// S-codes
-	if stmt.IncludesOneOf('A', 'B', 'C', 'U', 'V', 'W') {
-		panic("Only X, Y and Z axes are supported")
-	}
-
-	if stmt.IncludesOneOf('X', 'Y', 'Z') {
-		if vm.State.MoveMode == MoveModeCWArc || vm.State.MoveMode == MoveModeCCWArc {
-			vm.arc(stmt)
-		} else if vm.State.MoveMode == MoveModeLinear || vm.State.MoveMode == MoveModeRapid {
-			vm.move(stmt)
-		} else {
-			panic("Move attempted without an active move mode")
-		}
-	}
+	vm.feedRateMode(&stmt)
+	vm.feedRate(&stmt)
+	vm.spindleSpeed(&stmt)
+	vm.nextTool(&stmt)
+	vm.toolChange(&stmt)
+	vm.setSpindle(&stmt)
+	vm.setCoolant(&stmt)
+	vm.setPlane(&stmt)
+	vm.setUnits(&stmt)
+	vm.setCutterCompensation(&stmt)
+	vm.setCoordinateSystem(&stmt)
+	vm.setDistanceMode(&stmt)
+	vm.nonModals(&stmt)
+	vm.setMove(&stmt)
+	vm.setStop(&stmt)
+	vm.postCheck(&stmt)
 
 	return nil
 }
@@ -328,6 +697,7 @@ func (vm *Machine) Init() {
 	vm.MovePlane = PlaneXY
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
+	vm.NextTool = -1
 }
 
 //

@@ -181,6 +181,34 @@ func (s *Block) HasWord(address rune, command float64) (res bool) {
 	return false
 }
 
+func (s *Block) Remove(words ...*Word) {
+	for idx, _ := range s.Nodes {
+		if w, ok := s.Nodes[idx].(*Word); ok {
+			for _, word := range words {
+				if *w == *word {
+					s.Nodes = append(s.Nodes[:idx], s.Nodes[idx+1:]...)
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *Block) RemoveAddress(addresses ...rune) {
+	idx := 0
+	for idx < len(s.Nodes) {
+		if w, ok := s.Nodes[idx].(*Word); ok {
+			for _, addr := range addresses {
+				if w.Address == addr {
+					s.Nodes = append(s.Nodes[:idx], s.Nodes[idx+1:]...)
+					idx--
+				}
+			}
+		}
+		idx++
+	}
+}
+
 //
 // Document type
 //

@@ -12,7 +12,8 @@ func (vm *Machine) curPos() Position {
 }
 
 // Appends a position to the stack
-func (vm *Machine) addPos(pos Position) {
+func (vm *Machine) move(newX, newY, newZ float64) {
+	pos := Position{vm.State, newX, newY, newZ}
 	vm.Positions = append(vm.Positions, pos)
 }
 
@@ -64,50 +65,34 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 	return newX, newY, newZ, newI, newJ, newK
 }
 
-// Adds a simple linear move
-func (vm *Machine) move(stmt gcode.Block) {
-	newX, newY, newZ, _, _, _ := vm.calcPos(stmt)
-	vm.addPos(Position{vm.State, newX, newY, newZ})
-}
-
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) arc(stmt gcode.Block) {
+func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	var (
-		startPos                           Position = vm.curPos()
-		endX, endY, endZ, endI, endJ, endK float64  = vm.calcPos(stmt)
-		s1, s2, s3, e1, e2, e3, c1, c2, P  float64
-		add                                func(x, y, z float64)
-		clockwise                          bool = (vm.State.MoveMode == MoveModeCWArc)
+		startPos                       Position = vm.curPos()
+		s1, s2, s3, e1, e2, e3, c1, c2 float64
+		add                            func(x, y, z float64)
+		clockwise                      bool = (vm.State.MoveMode == MoveModeCWArc)
 	)
 
 	oldState := vm.State.MoveMode
 	vm.State.MoveMode = MoveModeLinear
-
-	// Read the additional rotation parameter
-	if pp, err := stmt.GetWord('P'); err == nil {
-		P = pp
-	}
 
 	//  Flip coordinate system for working in other planes
 	switch vm.MovePlane {
 	case PlaneXY:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.X, startPos.Y, startPos.Z, endX, endY, endZ, endI, endJ
 		add = func(x, y, z float64) {
-			wx, wy, wz := gcode.Word{'X', x}, gcode.Word{'Y', y}, gcode.Word{'Z', z}
-			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
+			vm.move(x, y, z)
 		}
 	case PlaneXZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Z, startPos.X, startPos.Y, endZ, endX, endY, endK, endI
 		add = func(x, y, z float64) {
-			wx, wy, wz := gcode.Word{'X', y}, gcode.Word{'Y', z}, gcode.Word{'Z', x}
-			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
-
+			vm.move(y, z, x)
 		}
 	case PlaneYZ:
 		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Y, startPos.Z, startPos.X, endY, endZ, endX, endJ, endK
 		add = func(x, y, z float64) {
-			wx, wy, wz := gcode.Word{'X', z}, gcode.Word{'Y', x}, gcode.Word{'Z', y}
-			vm.move(gcode.Block{Nodes: []gcode.Node{&wx, &wy, &wz}})
+			vm.move(z, x, y)
 		}
 	}
 

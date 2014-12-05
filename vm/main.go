@@ -194,6 +194,9 @@ func (vm *Machine) feedRateMode(stmt *gcode.Block) {
 
 func (vm *Machine) feedRate(stmt *gcode.Block) {
 	if val, err := stmt.GetWord('F'); err == nil {
+		if vm.Imperial {
+			val *= 25.4
+		}
 		vm.State.Feedrate = val
 		stmt.RemoveAddress('F')
 	} else if vm.State.FeedMode == FeedModeInvTime {

@@ -639,11 +639,11 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 		return
 	}
 
-	/*defer func() {
+	defer func() {
 		if r := recover(); r != nil {
 			err = errors.New(fmt.Sprintf("%s", r))
 		}
-	}()*/
+	}()
 
 	vm.feedRateMode(&stmt)
 	vm.feedRate(&stmt)

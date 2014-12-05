@@ -1,6 +1,7 @@
 package vm
 
 import "github.com/joushou/gocnc/gcode"
+import "github.com/joushou/gocnc/vector"
 import "math"
 
 import "fmt"
@@ -79,6 +80,7 @@ func (vm *Machine) arc(stmt gcode.Block) {
 		clockwise                          bool = (vm.State.MoveMode == MoveModeCWArc)
 	)
 
+	oldState := vm.State.MoveMode
 	vm.State.MoveMode = MoveModeLinear
 
 	// Read the additional rotation parameter
@@ -115,8 +117,13 @@ func (vm *Machine) arc(stmt gcode.Block) {
 		panic("Invalid arc statement")
 	}
 
-	if math.Abs((radius2-radius1)/radius1) > 0.01 {
-		panic(fmt.Sprintf("Radius deviation of %f percent", math.Abs((radius2-radius1)/radius1)*100))
+	if deviation := math.Abs((radius2-radius1)/radius1) * 100; deviation > 0.6 {
+		e := vector.Vector{e1, e2, e3}
+		m := vector.Vector{e1 - math.Abs(c1-s1), e2 - math.Abs(c2-s2), e3}
+		x := e.Diff(m).Norm()
+		if x > 0.1 {
+			panic(fmt.Sprintf("Radius deviation of %f percent and %f mm", deviation, x))
+		}
 	}
 
 	theta1 := math.Atan2((s2 - c2), (s1 - c1))
@@ -156,4 +163,6 @@ func (vm *Machine) arc(stmt gcode.Block) {
 		add(a1, a2, a3)
 	}
 	add(e1, e2, e3)
+
+	vm.State.MoveMode = oldState
 }

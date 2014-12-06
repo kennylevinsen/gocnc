@@ -26,7 +26,7 @@ import "errors"
 //   G40   - cutter compensation
 //   G41   - cutter compensation
 //   G42   - cutter compensation
-//
+//   G53   - move in machine coordinates
 //   G80   - cancel mode (?)
 //   G90   - absolute
 //   G90.1 - absolute arc
@@ -62,9 +62,7 @@ import "errors"
 // TODO
 //
 //   TESTS?! At least one per code!
-//   Error cases (Extra/Missing arguments, etc.)
-//   Execution order
-//   Modal groups
+//   More error cases
 //   Better comments
 //   Implement various canned cycles
 //   Variables (basic support?)
@@ -513,11 +511,13 @@ func (vm *Machine) performMove(stmt *gcode.Block) {
 	}
 
 	if s.MoveMode == MoveModeCWArc || s.MoveMode == MoveModeCCWArc {
+		// Arc
 		newX, newY, newZ, newI, newJ, newK := vm.calcPos(*stmt)
 		vm.arc(newX, newY, newZ, newI, newJ, newK, stmt.GetWordDefault('P', 1))
 		stmt.RemoveAddress('X', 'Y', 'Z', 'I', 'J', 'K', 'P')
 
 	} else if s.MoveMode == MoveModeLinear || s.MoveMode == MoveModeRapid {
+		// Line
 		newX, newY, newZ, _, _, _ := vm.calcPos(*stmt)
 		vm.move(newX, newY, newZ)
 		stmt.RemoveAddress('X', 'Y', 'Z')

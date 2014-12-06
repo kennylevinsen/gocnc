@@ -10,11 +10,11 @@ func (vm *Machine) curPos() Position {
 }
 
 // Appends a position to the stack
-func (vm *Machine) move(newX, newY, newZ float64) {
-	if math.IsNaN(newX) || math.IsNaN(newY) || math.IsNaN(newZ) {
+func (vm *Machine) move(x, y, z float64) {
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(z) {
 		panic("Internal failure: Move attempted with NaN value")
 	}
-	pos := Position{vm.State, newX, newY, newZ}
+	pos := Position{vm.State, x, y, z}
 	vm.Positions = append(vm.Positions, pos)
 }
 
@@ -76,38 +76,50 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 }
 
 // Calculates an approximate arc from the provided statement
-func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
+func (vm *Machine) arc(x, y, z, i, j, k, rotations float64) {
 	var (
-		startPos                       Position = vm.curPos()
+		sp                             Position = vm.curPos()
 		s1, s2, s3, e1, e2, e3, c1, c2 float64
 		add                            func(x, y, z float64)
 		clockwise                      bool = (vm.State.MoveMode == MoveModeCWArc)
 	)
-	// Hacky Hacky
-	P--
 
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(z) ||
+		math.IsNaN(i) || math.IsNaN(j) || math.IsNaN(k) {
+		panic("Internal failure: Arc attempted with NaN value")
+	}
+
+	if rotations < 1 {
+		panic("Arc rotations < 1")
+	}
+
+	// Ensure that we work on linear moves
 	oldState := vm.State.MoveMode
 	vm.State.MoveMode = MoveModeLinear
+	defer func() {
+		vm.State.MoveMode = oldState
+	}()
 
 	//  Flip coordinate system for working in other planes
 	switch vm.MovePlane {
 	case PlaneXY:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.X, startPos.Y, startPos.Z, endX, endY, endZ, endI, endJ
+		s1, s2, s3, e1, e2, e3, c1, c2 = sp.X, sp.Y, sp.Z, x, y, z, i, j
 		add = func(x, y, z float64) {
 			vm.move(x, y, z)
 		}
 	case PlaneXZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Z, startPos.X, startPos.Y, endZ, endX, endY, endK, endI
+		s1, s2, s3, e1, e2, e3, c1, c2 = sp.Z, sp.X, sp.Y, z, x, y, k, i
 		add = func(x, y, z float64) {
 			vm.move(y, z, x)
 		}
 	case PlaneYZ:
-		s1, s2, s3, e1, e2, e3, c1, c2 = startPos.Y, startPos.Z, startPos.X, endY, endZ, endX, endJ, endK
+		s1, s2, s3, e1, e2, e3, c1, c2 = sp.Y, sp.Z, sp.X, y, z, x, j, k
 		add = func(x, y, z float64) {
 			vm.move(z, x, y)
 		}
 	}
 
+	// Perform arc verification
 	radius1 := math.Sqrt(math.Pow(c1-s1, 2) + math.Pow(c2-s2, 2))
 	radius2 := math.Sqrt(math.Pow(c1-e1, 2) + math.Pow(c2-e2, 2))
 	if radius1 == 0 || radius2 == 0 {
@@ -121,6 +133,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 		panic(fmt.Sprintf("Radius deviation of %f percent and %f mm", deviation, rDiff))
 	}
 
+	// Some preparatory math
 	theta1 := math.Atan2((s2 - c2), (s1 - c1))
 	theta2 := math.Atan2((e2 - c2), (e1 - c1))
 
@@ -131,14 +144,17 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 		angleDiff -= 2 * math.Pi
 	}
 
+	// Rotations are provided as "up to circle count", but we need it as "additional circle count"
+	rotations--
 	if clockwise {
-		angleDiff -= P * 2 * math.Pi
+		angleDiff -= rotations * 2 * math.Pi
 	} else {
-		angleDiff += P * 2 * math.Pi
+		angleDiff += rotations * 2 * math.Pi
 	}
 
 	steps := 1
 
+	// Enforce a maximum arc deviation
 	if vm.MaxArcDeviation < radius1 {
 		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.MaxArcDeviation/radius1)))))
 	}
@@ -153,6 +169,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 
 	angle := 0.0
 
+	// Execute arc approximation
 	if steps > 0 {
 		for i := 0; i <= steps; i++ {
 			angle = theta1 + angleDiff/float64(steps)*float64(i)
@@ -163,6 +180,4 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	}
 
 	add(e1, e2, e3)
-
-	vm.State.MoveMode = oldState
 }

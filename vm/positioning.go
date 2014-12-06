@@ -72,6 +72,8 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 		add                            func(x, y, z float64)
 		clockwise                      bool = (vm.State.MoveMode == MoveModeCWArc)
 	)
+	// Hacky Hacky
+	P--
 
 	oldState := vm.State.MoveMode
 	vm.State.MoveMode = MoveModeLinear
@@ -125,6 +127,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	}
 
 	steps := 1
+	
 	if vm.MaxArcDeviation < radius1 {
 		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.MaxArcDeviation/radius1)))))
 	}
@@ -138,12 +141,16 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	}
 
 	angle := 0.0
-	for i := 0; i <= steps; i++ {
-		angle = theta1 + angleDiff/float64(steps)*float64(i)
-		a1, a2 := c1+radius1*math.Cos(angle), c2+radius1*math.Sin(angle)
-		a3 := s3 + (e3-s3)/float64(steps)*float64(i)
-		add(a1, a2, a3)
+
+	if steps > 0 {
+		for i := 0; i <= steps; i++ {
+			angle = theta1 + angleDiff/float64(steps)*float64(i)
+			a1, a2 := c1+radius1*math.Cos(angle), c2+radius1*math.Sin(angle)
+			a3 := s3 + (e3-s3)/float64(steps)*float64(i)
+			add(a1, a2, a3)
+		}
 	}
+	
 	add(e1, e2, e3)
 
 	vm.State.MoveMode = oldState

@@ -2,7 +2,6 @@ package vm
 
 import "github.com/joushou/gocnc/gcode"
 import "math"
-
 import "fmt"
 
 // Retrieves position from top of stack
@@ -26,20 +25,35 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 
 	if newX, err = stmt.GetWord('X'); err != nil {
 		newX = pos.X
-	} else if vm.Imperial {
-		newX *= 25.4
+	} else {
+		if vm.Imperial {
+			newX *= 25.4
+		}
+		if !vm.AbsoluteMove {
+			newX += pos.X
+		}
 	}
 
 	if newY, err = stmt.GetWord('Y'); err != nil {
 		newY = pos.Y
-	} else if vm.Imperial {
-		newY *= 25.4
+	} else {
+		if vm.Imperial {
+			newY *= 25.4
+		}
+		if !vm.AbsoluteMove {
+			newY += pos.Y
+		}
 	}
 
 	if newZ, err = stmt.GetWord('Z'); err != nil {
 		newZ = pos.Z
-	} else if vm.Imperial {
-		newZ *= 25.4
+	} else {
+		if vm.Imperial {
+			newZ *= 25.4
+		}
+		if !vm.AbsoluteMove {
+			newZ += pos.Z
+		}
 	}
 
 	newI = stmt.GetWordDefault('I', 0.0)
@@ -50,12 +64,6 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 		newI *= 25.4
 		newJ *= 25.4
 		newK *= 25.4
-	}
-
-	if !vm.AbsoluteMove {
-		newX += pos.X
-		newY += pos.Y
-		newZ += pos.Z
 	}
 
 	if !vm.AbsoluteArc {
@@ -130,7 +138,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	}
 
 	steps := 1
-	
+
 	if vm.MaxArcDeviation < radius1 {
 		steps = int(math.Ceil(math.Abs(angleDiff / (2 * math.Acos(1-vm.MaxArcDeviation/radius1)))))
 	}
@@ -153,7 +161,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 			add(a1, a2, a3)
 		}
 	}
-	
+
 	add(e1, e2, e3)
 
 	vm.State.MoveMode = oldState

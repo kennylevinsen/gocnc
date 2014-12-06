@@ -27,7 +27,6 @@ import "errors"
 //   G41   - cutter compensation
 //   G42   - cutter compensation
 //
-//   G64   - tolerance
 //   G80   - cancel mode (?)
 //   G90   - absolute
 //   G90.1 - absolute arc
@@ -56,7 +55,6 @@ import "errors"
 //
 // Notes:
 //   Dwell (G04) is ignored
-//   Tolerance (G64) is ignored
 //   Cutter compensation is just passed to machine
 //
 
@@ -421,6 +419,7 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 			case 4:
 				// TODO Handle!!!
 			case 28:
+
 				oldMode := vm.State.MoveMode
 				vm.State.MoveMode = MoveModeRapid
 				if stmt.IncludesOneOf('X', 'Y', 'Z') {
@@ -472,6 +471,8 @@ func (vm *Machine) setMove(stmt *gcode.Block) {
 				vm.State.MoveMode = MoveModeCWArc
 			case 3:
 				vm.State.MoveMode = MoveModeCCWArc
+			case 80:
+				vm.State.MoveMode = MoveModeNone
 			default:
 				unknownCommand("motionGroup", w)
 			}
@@ -505,7 +506,7 @@ func (vm *Machine) setMove(stmt *gcode.Block) {
 			vm.move(newX, newY, newZ)
 			stmt.RemoveAddress('X', 'Y', 'Z')
 		} else {
-			panic(fmt.Sprintf("Move attempted wihtout an active move mode: %s", stmt.Export(-1)))
+			panic(fmt.Sprintf("Move attempted without an active move mode: %s", stmt.Export(-1)))
 		}
 	}
 }

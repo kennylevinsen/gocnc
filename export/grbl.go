@@ -10,11 +10,6 @@ type GrblGenerator struct {
 	ForceModeWrite bool
 }
 
-// A no-op toolchange, as Grbl doesn't support it
-func (s *GrblGenerator) Toolchange(t int) {
-	// TODO Implement manual tool-change
-}
-
 func (s *GrblGenerator) Spindle(enabled, clockwise bool, speed float64) {
 	state := s.Position.State
 	x := ""

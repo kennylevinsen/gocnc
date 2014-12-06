@@ -116,6 +116,4 @@ Notes
 
 Path grouping is experimental. If it does not work correctly, please file a bug with the gcode. It can be disabled by using "--no-optpath". I fix the cases as I meet them - Open an issue if one is found.
 
-gocnc does *not* honor modal groups or execution order, but simply performs all known commands on a line/block (And fails on unknown commands). Modal group handling might be relevant, but some components could be annoying to implement, as gocnc is designed to only update states if there is a spindle move to associate it with. This hasn't been a problem with any of the gcode I have met so far.
-
 gocnc currently use a fork of goserial, as goserial handles a lot of things poorly. When my patches reach mainline, it will be reverting to using the standard variant.

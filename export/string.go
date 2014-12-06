@@ -4,6 +4,15 @@ import "github.com/joushou/gocnc/vm"
 import "fmt"
 import "strings"
 
+//
+// String code generator
+//
+// Used for exporting VM state as a gcode string
+//
+// Notes:
+//   Inverse time feed requires F to be set for every G-word, which is not done
+//
+
 type StringCodeGenerator struct {
 	BaseGenerator
 	Precision      int

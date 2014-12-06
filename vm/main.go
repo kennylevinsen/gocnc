@@ -4,6 +4,7 @@ import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vector"
 import "fmt"
 import "errors"
+import "os"
 
 //
 // The CNC interpreter/"vm"
@@ -156,6 +157,17 @@ func unknownCommand(group string, w *gcode.Word) {
 
 func propagate(err error) {
 	panic(fmt.Sprintf("%s", err))
+}
+
+func (vm *Machine) lineNumber(stmt *gcode.Block) {
+	if stmt.Length() > 0 {
+		if w, ok := stmt.Nodes[0].(*gcode.Word); ok {
+			if w.Address == 'N' {
+				// We just ignore and consume the line number
+				stmt.Remove(w)
+			}
+		}
+	}
 }
 
 func (vm *Machine) feedRateMode(stmt *gcode.Block) {
@@ -361,6 +373,28 @@ func (vm *Machine) setCutterCompensation(stmt *gcode.Block) {
 	}
 }
 
+func (vm *Machine) setToolLength(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("toolLengthGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				unknownCommand("toolLengthGroup", w)
+			}
+
+			switch w.Command {
+			case 43:
+				// Ignore!
+				fmt.Fprintf(os.Stderr, "Warning: G43 issued and ignored.\n")
+				stmt.RemoveAddress('H')
+			default:
+				unknownCommand("toolLengthGroup", w)
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		propagate(err)
+	}
+}
+
 func (vm *Machine) setCoordinateSystem(stmt *gcode.Block) {
 	// TODO Implement coordinate system offsets!
 	if w, err := stmt.GetModalGroup("coordinateSystemGroup"); err == nil {
@@ -370,8 +404,6 @@ func (vm *Machine) setCoordinateSystem(stmt *gcode.Block) {
 			}
 
 			switch w.Command {
-			case 53:
-				vm.TempCoordinateOverride = true
 			case 54:
 				// Ignore!
 			default:
@@ -398,6 +430,28 @@ func (vm *Machine) setDistanceMode(stmt *gcode.Block) {
 				vm.AbsoluteMove = false
 			default:
 				unknownCommand("distanceModeGroup", w)
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		propagate(err)
+	}
+}
+
+func (vm *Machine) setArcDistanceMode(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("arcDistanceModeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				unknownCommand("arcDistanceModeGroup", w)
+			}
+
+			switch w.Command {
+			case 90.1:
+				vm.AbsoluteArc = true
+			case 91.1:
+				vm.AbsoluteArc = false
+			default:
+				unknownCommand("arcDistanceModeGroup", w)
 			}
 			stmt.Remove(w)
 		}
@@ -443,6 +497,8 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 			case 30.1:
 				pos := vm.curPos()
 				vm.StoredPos2 = pos.Vector()
+			case 53:
+				vm.TempCoordinateOverride = true
 			default:
 				unknownCommand("nonModalGroup", w)
 			}
@@ -574,6 +630,7 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 		}
 	}()
 
+	vm.lineNumber(&stmt)
 	vm.feedRateMode(&stmt)
 	vm.feedRate(&stmt)
 	vm.spindleSpeed(&stmt)
@@ -584,8 +641,10 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 	vm.setPlane(&stmt)
 	vm.setUnits(&stmt)
 	vm.setCutterCompensation(&stmt)
+	vm.setToolLength(&stmt)
 	vm.setCoordinateSystem(&stmt)
 	vm.setDistanceMode(&stmt)
+	vm.setArcDistanceMode(&stmt)
 	vm.nonModals(&stmt)
 	vm.setMoveMode(&stmt)
 	vm.performMove(&stmt)

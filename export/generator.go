@@ -122,7 +122,7 @@ func HandlePosition(pos vm.Position, gens ...CodeGenerator) (err error) {
 			s.CutterCompensation(ns.CutterCompensation)
 		}
 
-		if cp.X != pos.X || cp.Y != pos.Y || cp.Z != pos.Z {
+		if cp.X != pos.X || cp.Y != pos.Y || cp.Z != pos.Z || cs.MoveMode != ns.MoveMode {
 			s.Move(pos.X, pos.Y, pos.Z, ns.MoveMode)
 		}
 		s.SetPosition(pos)

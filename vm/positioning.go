@@ -12,6 +12,9 @@ func (vm *Machine) curPos() Position {
 
 // Appends a position to the stack
 func (vm *Machine) move(newX, newY, newZ float64) {
+	if math.IsNaN(newX) || math.IsNaN(newY) || math.IsNaN(newZ) {
+		panic("Internal failure: Move attempted with NaN value")
+	}
 	pos := Position{vm.State, newX, newY, newZ}
 	vm.Positions = append(vm.Positions, pos)
 }
@@ -102,7 +105,7 @@ func (vm *Machine) arc(endX, endY, endZ, endI, endJ, endK, P float64) {
 	}
 
 	deviation := math.Abs((radius2-radius1)/radius1) * 100
-	rDiff := math.Abs(radius2-radius1)
+	rDiff := math.Abs(radius2 - radius1)
 
 	if (rDiff > 0.005 && deviation > 0.1) || rDiff > 0.5 {
 		panic(fmt.Sprintf("Radius deviation of %f percent and %f mm", deviation, rDiff))

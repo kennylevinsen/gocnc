@@ -455,7 +455,7 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 	}
 }
 
-func (vm *Machine) setMove(stmt *gcode.Block) {
+func (vm *Machine) setMoveMode(stmt *gcode.Block) {
 	if w, err := stmt.GetModalGroup("motionGroup"); err == nil {
 		if w != nil {
 			if w.Address != 'G' {
@@ -481,33 +481,49 @@ func (vm *Machine) setMove(stmt *gcode.Block) {
 	} else {
 		propagate(err)
 	}
+}
 
-	if stmt.IncludesOneOf('A', 'B', 'C', 'U', 'V', 'W') {
-		panic("Only X, Y and Z axes are supported")
+func (vm *Machine) performMove(stmt *gcode.Block) {
+	if !stmt.IncludesOneOf('X', 'Y', 'Z') {
+		// Nothing to do
+		return
 	}
 
-	if stmt.IncludesOneOf('X', 'Y', 'Z') {
-		if vm.State.FeedMode == FeedModeInvTime && vm.State.Feedrate == -1 && vm.State.MoveMode != MoveModeRapid {
-			panic("Non-rapid inverse time feed mode move attempted without a set feedrate")
-		}
-		if vm.TempCoordinateOverride && vm.State.CutterCompensation != CutCompModeNone {
+	s := vm.State
+
+	if s.FeedMode == FeedModeInvTime && s.Feedrate == -1 && s.MoveMode != MoveModeRapid {
+		panic("Non-rapid inverse time feed mode move attempted without a set feedrate")
+	}
+
+	if vm.TempCoordinateOverride {
+		if s.CutterCompensation != CutCompModeNone {
 			panic("Coordinate override attempted with cutter compensation enabled")
 		}
-		if vm.State.MoveMode == MoveModeCWArc || vm.State.MoveMode == MoveModeCCWArc {
-			if vm.TempCoordinateOverride {
-				panic("Coordinate override attempted for arc")
-			}
-			newX, newY, newZ, newI, newJ, newK := vm.calcPos(*stmt)
-			p := stmt.GetWordDefault('P', 1)
-			vm.arc(newX, newY, newZ, newI, newJ, newK, p)
-			stmt.RemoveAddress('X', 'Y', 'Z', 'I', 'J', 'K', 'P')
-		} else if vm.State.MoveMode == MoveModeLinear || vm.State.MoveMode == MoveModeRapid {
-			newX, newY, newZ, _, _, _ := vm.calcPos(*stmt)
-			vm.move(newX, newY, newZ)
-			stmt.RemoveAddress('X', 'Y', 'Z')
-		} else {
-			panic(fmt.Sprintf("Move attempted without an active move mode: %s", stmt.Export(-1)))
+
+		if s.MoveMode == MoveModeCWArc || s.MoveMode == MoveModeCCWArc {
+			panic("Coordinate override attempted for arc")
 		}
+
+		// Force absolute move for this single move
+		oldAbsolute := vm.AbsoluteMove
+		vm.AbsoluteMove = true
+		defer func() {
+			vm.AbsoluteMove = oldAbsolute
+		}()
+	}
+
+	if s.MoveMode == MoveModeCWArc || s.MoveMode == MoveModeCCWArc {
+		newX, newY, newZ, newI, newJ, newK := vm.calcPos(*stmt)
+		vm.arc(newX, newY, newZ, newI, newJ, newK, stmt.GetWordDefault('P', 1))
+		stmt.RemoveAddress('X', 'Y', 'Z', 'I', 'J', 'K', 'P')
+
+	} else if s.MoveMode == MoveModeLinear || s.MoveMode == MoveModeRapid {
+		newX, newY, newZ, _, _, _ := vm.calcPos(*stmt)
+		vm.move(newX, newY, newZ)
+		stmt.RemoveAddress('X', 'Y', 'Z')
+
+	} else {
+		panic(fmt.Sprintf("Move attempted without an active move mode: %s", stmt.Export(-1)))
 	}
 }
 
@@ -571,7 +587,8 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 	vm.setCoordinateSystem(&stmt)
 	vm.setDistanceMode(&stmt)
 	vm.nonModals(&stmt)
-	vm.setMove(&stmt)
+	vm.setMoveMode(&stmt)
+	vm.performMove(&stmt)
 	vm.setStop(&stmt)
 	vm.postCheck(&stmt)
 	vm.temporaryReset()

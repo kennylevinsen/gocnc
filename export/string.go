@@ -22,7 +22,7 @@ type StringCodeGenerator struct {
 
 // Initializes state, and puts in a header block.
 func (s *StringCodeGenerator) Init() {
-	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1}}
+	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1, 0}}
 	s.Lines = []string{"(Exported by gocnc)", "G21G90\n"}
 }
 
@@ -108,6 +108,10 @@ func (s *StringCodeGenerator) CutterCompensation(cutComp int) {
 	default:
 		panic("Unknown cutter compensation mode")
 	}
+}
+
+func (s *StringCodeGenerator) Dwell(seconds float64) {
+	s.put(fmt.Sprintf("G4P%s", floatToString(seconds, s.Precision)))
 }
 
 // Issues a move ([G0/G1] [Xn] [Yn] [Zn])

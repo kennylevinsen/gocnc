@@ -15,6 +15,8 @@ import "os"
 //   G01   - linear move
 //   G02   - cw arc
 //   G03   - ccw arc
+//   G04   - dwell
+//   G10L2 - set coordinate system offsets
 //   G17   - xy arc plane
 //   G18   - xz arc plane
 //   G19   - yz arc plane
@@ -28,11 +30,24 @@ import "os"
 //   G41   - cutter compensation
 //   G42   - cutter compensation
 //   G53   - move in machine coordinates
+//   G54   - select coordinate system 1
+//   G55   - select coordinate system 2
+//   G56   - select coordinate system 3
+//   G57   - select coordinate system 4
+//   G58   - select coordinate system 5
+//   G59   - select coordinate system 6
+//   G59.1 - select coordinate system 7
+//   G59.2 - select coordinate system 8
+//   G59.3 - select coordinate system 9
 //   G80   - cancel mode (?)
 //   G90   - absolute
 //   G90.1 - absolute arc
 //   G91   - relative
 //   G91.1 - relative arc
+//   G92   - set offsets
+//   G92.1 - erase offsets
+//   G92.2 - disable offsets
+//   G92.3 - enable offsets
 //   G93   - inverse feed mode
 //   G94   - units per minute feed mode
 //   G95   - units per revolution feed mode
@@ -55,7 +70,6 @@ import "os"
 //   I, J, K - arc center definition
 //
 // Notes:
-//   Dwell (G04) is ignored
 //   Cutter compensation is just passed to machine
 //
 
@@ -82,6 +96,7 @@ const (
 	MoveModeLinear = iota
 	MoveModeCWArc  = iota
 	MoveModeCCWArc = iota
+	MoveModeDwell  = iota
 )
 
 // Constants for plane selection
@@ -117,6 +132,7 @@ type State struct {
 	MistCoolant        bool
 	Tool               int
 	CutterCompensation int
+	DwellTime          float64
 }
 
 // Position and state
@@ -131,20 +147,30 @@ func (p Position) Vector() vector.Vector {
 
 // Machine state and settings
 type Machine struct {
-	State                  State
-	Completed              bool
-	Imperial               bool
-	AbsoluteMove           bool
-	AbsoluteArc            bool
-	MovePlane              int
-	NextTool               int
-	MaxArcDeviation        float64
-	MinArcLineLength       float64
-	Tolerance              float64
-	StoredPos1             vector.Vector
-	StoredPos2             vector.Vector
-	TempCoordinateOverride bool
-	Positions              []Position
+	State     State
+	Positions []Position
+
+	// Regular states
+	Completed    bool
+	Imperial     bool
+	AbsoluteMove bool
+	AbsoluteArc  bool
+	MovePlane    int
+	NextTool     int
+
+	// Coordinate systems
+	CoordinateSystem CoordinateSystem
+
+	// Positions
+	StoredPos1 vector.Vector
+	StoredPos2 vector.Vector
+
+	// Arc settings
+	MaxArcDeviation  float64
+	MinArcLineLength float64
+
+	// Options
+	IgnoreBlockDelete bool
 }
 
 //
@@ -153,6 +179,10 @@ type Machine struct {
 
 func unknownCommand(group string, w *gcode.Word) {
 	panic(fmt.Sprintf("Unknown command from group \"%s\": %s", group, w.Export(-1)))
+}
+
+func invalidCommand(group, command, description string) {
+	panic(fmt.Sprintf("Invalid command \"%s\" form group \"%s\": %s", command, group, description))
 }
 
 func propagate(err error) {
@@ -403,12 +433,33 @@ func (vm *Machine) setCoordinateSystem(stmt *gcode.Block) {
 				unknownCommand("coordinateSystemGroup", w)
 			}
 
+			if vm.State.CutterCompensation != CutCompModeNone {
+				invalidCommand("coordinateSystemGroup", "coordinate system select", "Coordinate system change attempted with cutter compensation enabled")
+			}
+
 			switch w.Command {
 			case 54:
-				// Ignore!
+				vm.CoordinateSystem.SelectCoordinateSystem(1)
+			case 55:
+				vm.CoordinateSystem.SelectCoordinateSystem(2)
+			case 56:
+				vm.CoordinateSystem.SelectCoordinateSystem(3)
+			case 57:
+				vm.CoordinateSystem.SelectCoordinateSystem(4)
+			case 58:
+				vm.CoordinateSystem.SelectCoordinateSystem(5)
+			case 59:
+				vm.CoordinateSystem.SelectCoordinateSystem(6)
+			case 59.1:
+				vm.CoordinateSystem.SelectCoordinateSystem(7)
+			case 59.2:
+				vm.CoordinateSystem.SelectCoordinateSystem(8)
+			case 59.3:
+				vm.CoordinateSystem.SelectCoordinateSystem(9)
 			default:
 				unknownCommand("coordinateSystemGroup", w)
 			}
+
 			stmt.Remove(w)
 		}
 	} else {
@@ -469,7 +520,37 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 
 			switch w.Command {
 			case 4:
-				// TODO Handle!!!
+				if val, err := stmt.GetWord('P'); err == nil {
+					if val < 0 {
+						invalidCommand("nonModalGroup", "dwell", "P word negative")
+					}
+					vm.dwell(val)
+				} else {
+					invalidCommand("nonModalGroup", "dwell", "P word not specified or specified multiple times")
+				}
+				stmt.RemoveAddress('P')
+
+			case 10:
+				if val, err := stmt.GetWord('L'); err == nil {
+					if val == 2 {
+						// Set coordinate system offsets
+						if cs, err := stmt.GetWord('P'); err == nil {
+							cs := int(cs)
+							x, y, z := stmt.GetWordDefault('X', 0), stmt.GetWordDefault('Y', 0), stmt.GetWordDefault('Z', 0)
+							x, y, z = vm.axesToMetric(x, y, z)
+
+							vm.CoordinateSystem.SetCoordinateSystem(x, y, z, cs)
+							stmt.RemoveAddress('X', 'Y', 'Z')
+						} else {
+							invalidCommand("nonModalGroup", "coordinate system configuration", "P word not specified or specified multiple times")
+						}
+						stmt.RemoveAddress('P')
+					}
+				} else {
+					invalidCommand("nonModalGroup", "G10 configuration", "L word not specified or specified multiple times")
+				}
+				stmt.RemoveAddress('L')
+
 			case 28:
 
 				oldMode := vm.State.MoveMode
@@ -481,9 +562,11 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 				}
 				vm.move(vm.StoredPos1.X, vm.StoredPos1.Y, vm.StoredPos1.Z)
 				vm.State.MoveMode = oldMode
+
 			case 28.1:
 				pos := vm.curPos()
 				vm.StoredPos1 = pos.Vector()
+
 			case 30:
 				oldMode := vm.State.MoveMode
 				vm.State.MoveMode = MoveModeRapid
@@ -494,13 +577,42 @@ func (vm *Machine) nonModals(stmt *gcode.Block) {
 				}
 				vm.move(vm.StoredPos2.X, vm.StoredPos2.Y, vm.StoredPos2.Z)
 				vm.State.MoveMode = oldMode
+
 			case 30.1:
 				pos := vm.curPos()
 				vm.StoredPos2 = pos.Vector()
+
 			case 53:
-				vm.TempCoordinateOverride = true
+				vm.CoordinateSystem.Override()
+
+			case 92:
+				if stmt.IncludesOneOf('X', 'Y', 'Z') {
+					cp := vm.curPos()
+					x, y, z := stmt.GetWordDefault('X', 0), stmt.GetWordDefault('Y', 0), stmt.GetWordDefault('Z', 0)
+					x, y, z = vm.axesToMetric(x, y, z)
+
+					vm.CoordinateSystem.DisableOffset()
+					x, y, z = vm.CoordinateSystem.ApplyCoordinateSystem(x, y, z)
+					diffX, diffY, diffZ := cp.X-x, cp.Y-y, cp.Z-z
+					vm.CoordinateSystem.SetOffset(diffX, diffY, diffZ)
+					vm.CoordinateSystem.EnableOffset()
+
+					stmt.RemoveAddress('X', 'Y', 'Z')
+				} else {
+					invalidCommand("nonModalGroup", "G92 configuration", "No axis words specified")
+				}
+			case 92.1:
+				vm.CoordinateSystem.EraseOffset()
+
+			case 92.2:
+				vm.CoordinateSystem.DisableOffset()
+
+			case 92.3:
+				vm.CoordinateSystem.EnableOffset()
+
 			default:
 				unknownCommand("nonModalGroup", w)
+
 			}
 			stmt.Remove(w)
 		}
@@ -546,24 +658,17 @@ func (vm *Machine) performMove(stmt *gcode.Block) {
 	s := vm.State
 
 	if s.FeedMode == FeedModeInvTime && s.Feedrate == -1 && s.MoveMode != MoveModeRapid {
-		panic("Non-rapid inverse time feed mode move attempted without a set feedrate")
+		invalidCommand("motionGroup", "rapid", "Non-rapid inverse time feed mode move attempted without a set feedrate")
 	}
 
-	if vm.TempCoordinateOverride {
+	if vm.CoordinateSystem.OverrideActive() {
 		if s.CutterCompensation != CutCompModeNone {
-			panic("Coordinate override attempted with cutter compensation enabled")
+			invalidCommand("motionGroup", "move", "Coordinate override attempted with cutter compensation enabled")
 		}
 
 		if s.MoveMode == MoveModeCWArc || s.MoveMode == MoveModeCCWArc {
-			panic("Coordinate override attempted for arc")
+			invalidCommand("motionGroup", "arc", "Coordinate override attempted for arc")
 		}
-
-		// Force absolute move for this single move
-		oldAbsolute := vm.AbsoluteMove
-		vm.AbsoluteMove = true
-		defer func() {
-			vm.AbsoluteMove = oldAbsolute
-		}()
 	}
 
 	if s.MoveMode == MoveModeCWArc || s.MoveMode == MoveModeCCWArc {
@@ -579,7 +684,7 @@ func (vm *Machine) performMove(stmt *gcode.Block) {
 		stmt.RemoveAddress('X', 'Y', 'Z')
 
 	} else {
-		panic(fmt.Sprintf("Move attempted without an active move mode: %s", stmt.Export(-1)))
+		invalidCommand("motionGroup", "move", fmt.Sprintf("Move attempted without an active move mode [%s]", stmt.Export(-1)))
 	}
 }
 
@@ -615,7 +720,7 @@ func (vm *Machine) postCheck(stmt *gcode.Block) {
 }
 
 func (vm *Machine) temporaryReset() {
-	vm.TempCoordinateOverride = false
+	vm.CoordinateSystem.CancelOverride()
 }
 
 func (vm *Machine) run(stmt gcode.Block) (err error) {
@@ -667,7 +772,7 @@ func (vm *Machine) finalize() {
 // Process AST
 func (vm *Machine) Process(doc *gcode.Document) (err error) {
 	for idx, b := range doc.Blocks {
-		if b.BlockDelete {
+		if b.BlockDelete && vm.IgnoreBlockDelete {
 			continue
 		}
 
@@ -689,6 +794,7 @@ func (vm *Machine) Init() {
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
 	vm.NextTool = -1
+	vm.IgnoreBlockDelete = false
 }
 
 //

@@ -4,6 +4,16 @@ import "github.com/joushou/gocnc/gcode"
 import "math"
 import "fmt"
 
+// Converts the arguments to mm if necessary
+func (vm *Machine) axesToMetric(x, y, z float64) (float64, float64, float64) {
+	if vm.Imperial {
+		x *= 25.4
+		y *= 25.4
+		z *= 25.4
+	}
+	return x, y, z
+}
+
 // Retrieves position from top of stack
 func (vm *Machine) curPos() Position {
 	return vm.Positions[len(vm.Positions)-1]
@@ -18,10 +28,21 @@ func (vm *Machine) move(x, y, z float64) {
 	vm.Positions = append(vm.Positions, pos)
 }
 
-// Calculates the absolute position of the given statement, including optional I, J, K parameters
+// Calculates the absolute position of the given statement, including optional I, J, K parameters.
+// Units are converted, and coordinate system applied unless overridden.
 func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK float64) {
 	pos := vm.curPos()
 	var err error
+
+	coordinateSystem := vm.CoordinateSystem.GetCoordinateSystem()
+
+	if vm.CoordinateSystem.OverrideActive() {
+		oldAbsolute := vm.AbsoluteMove
+		vm.AbsoluteMove = true
+		defer func() {
+			vm.AbsoluteMove = oldAbsolute
+		}()
+	}
 
 	if newX, err = stmt.GetWord('X'); err != nil {
 		newX = pos.X
@@ -31,6 +52,8 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 		}
 		if !vm.AbsoluteMove {
 			newX += pos.X
+		} else {
+			newX += coordinateSystem.X
 		}
 	}
 
@@ -42,6 +65,8 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 		}
 		if !vm.AbsoluteMove {
 			newY += pos.Y
+		} else {
+			newY += coordinateSystem.Y
 		}
 	}
 
@@ -53,6 +78,8 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 		}
 		if !vm.AbsoluteMove {
 			newZ += pos.Z
+		} else {
+			newZ += coordinateSystem.Z
 		}
 	}
 
@@ -70,6 +97,10 @@ func (vm *Machine) calcPos(stmt gcode.Block) (newX, newY, newZ, newI, newJ, newK
 		newI += pos.X
 		newJ += pos.Y
 		newK += pos.Z
+	} else {
+		newI += coordinateSystem.X
+		newJ += coordinateSystem.Y
+		newZ += coordinateSystem.Z
 	}
 
 	return newX, newY, newZ, newI, newJ, newK
@@ -180,4 +211,11 @@ func (vm *Machine) arc(x, y, z, i, j, k, rotations float64) {
 	}
 
 	add(e1, e2, e3)
+}
+
+func (vm *Machine) dwell(seconds float64) {
+	curPos := vm.curPos()
+	curPos.State.DwellTime = seconds
+	curPos.State.MoveMode = MoveModeDwell
+	vm.Positions = append(vm.Positions, curPos)
 }

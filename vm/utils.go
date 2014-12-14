@@ -217,6 +217,9 @@ func (m *Machine) ETA() time.Duration {
 		case MoveModeRapid:
 			// This is silly, but it gives something to calculate with
 			feed *= 8
+		case MoveModeDwell:
+			eta += time.Duration(pos.State.DwellTime) * time.Second
+			continue
 		}
 		dx, dy, dz := pos.X-lx, pos.Y-ly, pos.Z-lz
 		lx, ly, lz = pos.X, pos.Y, pos.Z

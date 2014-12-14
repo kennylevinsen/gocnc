@@ -32,6 +32,7 @@ type CodeGenerator interface {
 	FeedMode(int)
 	Feedrate(float64)
 	CutterCompensation(int)
+	Dwell(float64)
 	Move(float64, float64, float64, int)
 	Init()
 }
@@ -76,12 +77,16 @@ func (s *BaseGenerator) CutterCompensation(int) {
 }
 
 // Dummy implementation
+func (s *BaseGenerator) Dwell(float64) {
+}
+
+// Dummy implementation
 func (s *BaseGenerator) Move(float64, float64, float64, int) {
 }
 
 // Initializes the current position.
 func (s *BaseGenerator) Init() {
-	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1}}
+	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1, 0}}
 }
 
 // Calls the CodeGenerator for all changed states.
@@ -122,7 +127,9 @@ func HandlePosition(pos vm.Position, gens ...CodeGenerator) (err error) {
 			s.CutterCompensation(ns.CutterCompensation)
 		}
 
-		if cp.X != pos.X || cp.Y != pos.Y || cp.Z != pos.Z || cs.MoveMode != ns.MoveMode {
+		if ns.MoveMode == vm.MoveModeDwell {
+			s.Dwell(ns.DwellTime)
+		} else if cp.X != pos.X || cp.Y != pos.Y || cp.Z != pos.Z || cs.MoveMode != ns.MoveMode {
 			s.Move(pos.X, pos.Y, pos.Z, ns.MoveMode)
 		}
 		s.SetPosition(pos)

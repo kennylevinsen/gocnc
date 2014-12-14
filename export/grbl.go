@@ -68,6 +68,10 @@ func (s *GrblGenerator) CutterCompensation(cutComp int) {
 	}
 }
 
+func (s *GrblGenerator) Dwell(seconds float64) {
+	s.Write(fmt.Sprintf("G4P%s", floatToString(seconds, s.Precision)))
+}
+
 func (s *GrblGenerator) Move(x, y, z float64, moveMode int) {
 	w := ""
 	pos := s.GetPosition()

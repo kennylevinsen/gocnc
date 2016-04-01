@@ -1,12 +1,15 @@
 package streaming
 
-import "io"
-import "bufio"
-import "github.com/joushou/goserial"
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/export"
-import "errors"
-import "fmt"
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/joushou/gocnc/export"
+	"github.com/joushou/gocnc/vm"
+	"github.com/raggi/goserial"
+)
 
 // A result struct used by serialReader
 type result struct {

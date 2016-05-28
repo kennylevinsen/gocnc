@@ -135,6 +135,15 @@ type State struct {
 	DwellTime          float64
 }
 
+// NewState returns an initialized State.
+func NewState() State {
+	return State{
+		FeedMode:            -1,
+		Tool:                -1,
+		CutterCompenstation: -1,
+	}
+}
+
 // Position and state
 type Position struct {
 	State   State

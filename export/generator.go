@@ -86,7 +86,7 @@ func (s *BaseGenerator) Move(float64, float64, float64, int) {
 
 // Initializes the current position.
 func (s *BaseGenerator) Init() {
-	s.Position = vm.Position{State: vm.State{0, 0, 0, -1, false, false, false, false, -1, -1, 0}}
+	s.Position = vm.Position{State: vm.NewState()}
 }
 
 // Calls the CodeGenerator for all changed states.

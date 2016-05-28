@@ -1,4 +1,4 @@
-gocnc
+gocnc [![Go Report Card](https://goreportcard.com/badge/github.com/joushou/gocnc)](https://goreportcard.com/report/github.com/joushou/gocnc)
 =====
 
 A command-line GCode sender and optimizer for CNC routers

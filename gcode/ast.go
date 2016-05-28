@@ -182,7 +182,7 @@ func (s *Block) HasWord(address rune, command float64) (res bool) {
 }
 
 func (s *Block) Remove(words ...*Word) {
-	for idx, _ := range s.Nodes {
+	for idx := range s.Nodes {
 		if w, ok := s.Nodes[idx].(*Word); ok {
 			for _, word := range words {
 				if *w == *word {

@@ -211,7 +211,7 @@ func (m *ManualGenerator) Toolchange(i int) {
 	if m.hasChanged {
 		change := toolLength - m.toolLength
 
-		for idx, _ := range machine.Positions {
+		for idx := range machine.Positions {
 			machine.Positions[idx].Z += change
 		}
 
@@ -443,7 +443,7 @@ func main() {
 			}
 		}()
 
-		for idx, _ := range machine.Positions {
+		for idx := range machine.Positions {
 			if err := export.HandlePositionAtIndex(&machine, idx, generators...); err != nil {
 				s.Stop()
 				panic(err)

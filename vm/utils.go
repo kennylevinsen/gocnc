@@ -7,7 +7,7 @@ import "time"
 
 // Flips the X and Y axes of all moves
 func (vm *Machine) FlipXY() {
-	for idx, _ := range vm.Positions {
+	for idx := range vm.Positions {
 		pos := vm.Positions[idx]
 		vm.Positions[idx].X, vm.Positions[idx].Y = pos.Y, pos.X
 	}
@@ -24,14 +24,14 @@ func (vm *Machine) LimitFeedrate(feed float64) {
 
 // Increase feedrate
 func (vm *Machine) FeedrateMultiplier(feedMultiplier float64) {
-	for idx, _ := range vm.Positions {
+	for idx := range vm.Positions {
 		vm.Positions[idx].State.Feedrate *= feedMultiplier
 	}
 }
 
 // Multiply move distances - This makes no sense - Dangerous.
 func (vm *Machine) MoveMultiplier(moveMultiplier float64) {
-	for idx, _ := range vm.Positions {
+	for idx := range vm.Positions {
 		vm.Positions[idx].X *= moveMultiplier
 		vm.Positions[idx].Y *= moveMultiplier
 		vm.Positions[idx].Z *= moveMultiplier
@@ -40,7 +40,7 @@ func (vm *Machine) MoveMultiplier(moveMultiplier float64) {
 
 // Enforce spindle mode
 func (vm *Machine) EnforceSpindle(enabled, clockwise bool, speed float64) {
-	for idx, _ := range vm.Positions {
+	for idx := range vm.Positions {
 		vm.Positions[idx].State.SpindleSpeed = speed
 		vm.Positions[idx].State.SpindleEnabled = enabled
 		vm.Positions[idx].State.SpindleClockwise = clockwise

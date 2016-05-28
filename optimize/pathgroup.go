@@ -111,7 +111,7 @@ func OptPathGrouping(machine *vm.Machine, tolerance float64) (err error) {
 
 	// Sort the sets after distance from current position
 	for len(sets) > 0 {
-		for idx, _ := range sets {
+		for idx := range sets {
 			if selectedSet == -1 {
 				selectedSet = idx
 			} else {

@@ -6,7 +6,7 @@ import "github.com/joushou/gocnc/optimize"
 import "github.com/joushou/gocnc/export"
 import "github.com/joushou/gocnc/streaming"
 import "github.com/cheggaaa/pb"
-import "gopkg.in/alecthomas/kingpin.v1"
+import "github.com/alecthomas/kingpin"
 
 import "io/ioutil"
 import "bufio"

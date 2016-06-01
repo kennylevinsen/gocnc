@@ -138,9 +138,9 @@ type State struct {
 // NewState returns an initialized State.
 func NewState() State {
 	return State{
-		FeedMode:            -1,
-		Tool:                -1,
-		CutterCompenstation: -1,
+		FeedMode:           -1,
+		Tool:               -1,
+		CutterCompensation: -1,
 	}
 }
 

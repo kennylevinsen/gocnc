@@ -22,7 +22,7 @@ type StringCodeGenerator struct {
 
 // Initializes state, and puts in a header block.
 func (s *StringCodeGenerator) Init() {
-	s.Position = vm.Position{State: vm.NwState()}
+	s.Position = vm.Position{State: vm.NewState()}
 	s.Lines = []string{"(Exported by gocnc)", "G21G90\n"}
 }
 

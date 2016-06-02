@@ -31,19 +31,22 @@ var (
 	autoStart   = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
 	ignBlockDel = kingpin.Flag("ignblockdel", "Ignore block deletes").Bool()
 
-	opt             = kingpin.Flag("opt", "Allow optimizations").Default("true").Bool()
+	opt             = kingpin.Flag("opt", "Allow optimizations").Default("false").Bool()
 	optBogusMove    = kingpin.Flag("optbogus", "Remove all moves that would be an implicit part of another move (Deprecated for optvector)").Default("false").Bool()
 	optVector       = kingpin.Flag("optvector", "Remove all B moves that deviate from the line AC more than tolerance").Default("true").Bool()
 	optLiftSpeed    = kingpin.Flag("optlifts", "Use rapid positioning for Z-only upwards moves").Default("true").Bool()
-	optDrillSpeed   = kingpin.Flag("optdrill", "Use rapid positioning for drills to last drilled depth").Default("true").Bool()
+	optDrillSpeed   = kingpin.Flag("optdrill", "Use fast positioning for drills to last drilled depth").Default("false").Bool()
 	optFloatingZ    = kingpin.Flag("optfloat", "Remove bogus moves above Z0 (floating Z)").Default("true").Bool()
-	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("true").Bool()
+	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("false").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
 	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()
 	minArcLineLength = kingpin.Flag("minarclinelength", "Minimum arc segment line length (mm)").Default("0.01").Float()
 	rtolerance       = kingpin.Flag("rtolerance", "Tolerance used by route grouping (mm)").Default("0.001").Float()
 	vtolerance       = kingpin.Flag("vtolerance", "Tolerance used by vector optimization (mm)").Default("0.0003").Float()
+	rapiddrill       = kingpin.Flag("rapiddrill", "Use rapid moves for drills optimizations").Default("false").Bool()
+	drillfeed        = kingpin.Flag("dillfeed", "Feedrage to use for drill optimizations").Default("1000").Float()
+	floatingzheight  = kingpin.Flag("floatingzheight", "Z height required to consider a move floating").Default("1").Float()
 
 	feedLimit    = kingpin.Flag("feedlimit", "Maximum feedrate (mm/min, <= 0 to disable)").Float()
 	safetyHeight = kingpin.Flag("safetyheight", "Enforce safety height (mm, <= 0 to disable)").Float()
@@ -295,11 +298,11 @@ func main() {
 	// Optimize as requested
 	if *opt {
 		if *optDrillSpeed {
-			optimize.OptDrillSpeed(&machine)
+			optimize.OptDrillSpeed(&machine, *drillfeed, *rapiddrill)
 		}
 
 		if *optFloatingZ {
-			optimize.OptFloatingZ(&machine)
+			optimize.OptFloatingZ(&machine, *floatingzheight)
 		}
 
 		if *optPathGrouping {

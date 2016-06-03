@@ -13,8 +13,7 @@ import "bufio"
 
 import "fmt"
 import "os"
-import "os/signal"
-import "syscall"
+
 import "time"
 import "strconv"
 
@@ -425,17 +424,17 @@ func main() {
 		pBar.Format("[=> ]")
 		pBar.Start()
 
-		sigchan := make(chan os.Signal, 1)
-		signal.Notify(sigchan, os.Interrupt)
-		signal.Notify(sigchan, syscall.SIGTSTP)
+		sigchan := make(chan string, 1)
+		registerSignals(sigchan)
 
 		go func() {
 			for sig := range sigchan {
-				if sig == os.Interrupt {
+				switch sig {
+				case "interrupt":
 					fmt.Fprintf(os.Stderr, "\nStopping...\n")
 					s.Stop()
 					os.Exit(5)
-				} else if sig == syscall.SIGTSTP {
+				case "stop":
 					s.Pause()
 					fmt.Fprintf(os.Stderr, "\nPaused. Press <ENTER> to continue")
 					reader := bufio.NewReader(os.Stdin)

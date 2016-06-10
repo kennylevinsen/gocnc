@@ -4,7 +4,6 @@ import "github.com/joushou/gocnc/gcode"
 import "github.com/joushou/gocnc/vector"
 import "fmt"
 import "errors"
-import "os"
 
 //
 // The CNC interpreter/"vm"
@@ -130,7 +129,8 @@ type State struct {
 	SpindleClockwise   bool
 	FloodCoolant       bool
 	MistCoolant        bool
-	Tool               int
+	ToolIndex          int
+	ToolLengthIndex    int
 	CutterCompensation int
 	DwellTime          float64
 }
@@ -139,7 +139,8 @@ type State struct {
 func NewState() State {
 	return State{
 		FeedMode:           -1,
-		Tool:               -1,
+		ToolIndex:          -1,
+		ToolLengthIndex:    -1,
 		CutterCompensation: -1,
 	}
 }
@@ -280,7 +281,7 @@ func (vm *Machine) toolChange(stmt *gcode.Block) {
 				if vm.NextTool == -1 {
 					panic("Toolchange attempted without a defined tool")
 				}
-				vm.State.Tool = vm.NextTool
+				vm.State.ToolIndex = vm.NextTool
 			default:
 				unknownCommand("toolChangeGroup", w)
 			}
@@ -369,6 +370,27 @@ func (vm *Machine) setPlane(stmt *gcode.Block) {
 	}
 }
 
+func (vm *Machine) setPolarMode(stmt *gcode.Block) {
+	if w, err := stmt.GetModalGroup("polarModeGroup"); err == nil {
+		if w != nil {
+			if w.Address != 'G' {
+				unknownCommand("polarModeGroup", w)
+			}
+
+			switch w.Command {
+			case 15:
+			case 16:
+				panic("polar mode not supported")
+			default:
+				unknownCommand("polarModeGroup", w)
+			}
+			stmt.Remove(w)
+		}
+	} else {
+		propagate(err)
+	}
+}
+
 func (vm *Machine) setUnits(stmt *gcode.Block) {
 	if w, err := stmt.GetModalGroup("unitsGroup"); err == nil {
 		if w != nil {
@@ -424,9 +446,14 @@ func (vm *Machine) setToolLength(stmt *gcode.Block) {
 
 			switch w.Command {
 			case 43:
-				// Ignore!
-				fmt.Fprintf(os.Stderr, "Warning: G43 issued and ignored.\n")
+				if nw, err := stmt.GetWord('H'); err == nil {
+					vm.State.ToolLengthIndex = int(nw)
+				} else {
+					vm.State.ToolLengthIndex = vm.State.ToolIndex
+				}
 				stmt.RemoveAddress('H')
+			case 49:
+				vm.State.ToolLengthIndex = 0
 			default:
 				unknownCommand("toolLengthGroup", w)
 			}
@@ -756,6 +783,7 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 	vm.toolChange(&stmt)
 	vm.setSpindle(&stmt)
 	vm.setCoolant(&stmt)
+	vm.setPolarMode(&stmt)
 	vm.setPlane(&stmt)
 	vm.setUnits(&stmt)
 	vm.setCutterCompensation(&stmt)

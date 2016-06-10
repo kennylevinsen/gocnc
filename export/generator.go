@@ -26,7 +26,8 @@ func floatToString(f float64, p int) string {
 type CodeGenerator interface {
 	GetPosition() vm.Position
 	SetPosition(vm.Position)
-	Toolchange(int)
+	ToolChange(int)
+	ToolLengthChange(int)
 	Spindle(bool, bool, float64)
 	Coolant(bool, bool)
 	FeedMode(int)
@@ -53,7 +54,11 @@ func (s *BaseGenerator) SetPosition(pos vm.Position) {
 }
 
 // Dummy implementation
-func (s *BaseGenerator) Toolchange(int) {
+func (s *BaseGenerator) ToolChange(int) {
+}
+
+// Dummy implementation
+func (s *BaseGenerator) ToolLengthChange(int) {
 }
 
 // Dummy implementation
@@ -101,8 +106,12 @@ func HandlePosition(pos vm.Position, gens ...CodeGenerator) (err error) {
 		cs := cp.State
 		ns := pos.State
 
-		if ns.Tool != cs.Tool {
-			s.Toolchange(ns.Tool)
+		if ns.ToolIndex != cs.ToolIndex {
+			s.ToolChange(ns.ToolIndex)
+		}
+
+		if ns.ToolLengthIndex != cs.ToolLengthIndex {
+			s.ToolLengthChange(ns.ToolLengthIndex)
 		}
 
 		if ns.SpindleEnabled != cs.SpindleEnabled ||

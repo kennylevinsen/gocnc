@@ -36,9 +36,19 @@ func (s *StringCodeGenerator) Retrieve() string {
 }
 
 // Adds a toolchange operation (M6 Tn).
-func (s *StringCodeGenerator) Toolchange(t int) {
+func (s *StringCodeGenerator) ToolChange(t int) {
 	s.put(fmt.Sprintf("M6 T%d", t))
 	s.ForceModeWrite = true
+}
+
+// Adds a tool length index operation (G43 Hn or G49)
+func (s *StringCodeGenerator) ToolLengthChange(h int) {
+	switch h {
+	case 0:
+		s.put("G49")
+	default:
+		s.put(fmt.Sprintf("G43H%d", h))
+	}
 }
 
 // Adds a spindle operation (M3/M4/M5 [Sn]).

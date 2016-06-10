@@ -39,6 +39,10 @@ var (
 			&Word{'G', 88},
 			&Word{'G', 89},
 		},
+		"polarModeGroup": {
+			&Word{'G', 15},
+			&Word{'G', 16},
+		},
 		"planeSelectionGroup": {&Word{'G', 17},
 			&Word{'G', 18},
 			&Word{'G', 19},

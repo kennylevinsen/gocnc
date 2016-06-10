@@ -23,8 +23,9 @@ var (
 	baudrate   = kingpin.Flag("baudrate", "Baudrate for serial device").Short('b').Default("115200").Int()
 	outputFile = kingpin.Flag("output", "Output file for gcode").Short('o').String()
 
-	dumpStdout = kingpin.Flag("stdout", "Dump gcode to stdout").Bool()
-	debugDump  = kingpin.Flag("debugdump", "Dump VM state to stdout").Hidden().Bool()
+	dumpStdout          = kingpin.Flag("stdout", "Dump gcode to stdout").Bool()
+	debugDump           = kingpin.Flag("debugdump", "Dump VM state to stdout").Hidden().Bool()
+	allowRemainingWords = kingpin.Flag("allowremainingwords", "Allow remaining words on block when done parsing").Default("false").Bool()
 
 	stats       = kingpin.Flag("stats", "Print gcode metrics").Default("true").Bool()
 	autoStart   = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
@@ -286,6 +287,7 @@ func main() {
 	// Run through the VM
 	machine.Init()
 	machine.IgnoreBlockDelete = *ignBlockDel
+	machine.AllowRemainingWords = *allowRemainingWords
 	machine.MaxArcDeviation = *maxArcDeviation
 	machine.MinArcLineLength = *minArcLineLength
 

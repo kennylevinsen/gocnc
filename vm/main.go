@@ -1,6 +1,10 @@
 package vm
 
-import "github.com/joushou/gocnc/gcode"
+import (
+	"log"
+
+	"github.com/joushou/gocnc/gcode"
+)
 import "github.com/joushou/gocnc/vector"
 import "fmt"
 import "errors"
@@ -180,7 +184,8 @@ type Machine struct {
 	MinArcLineLength float64
 
 	// Options
-	IgnoreBlockDelete bool
+	IgnoreBlockDelete   bool
+	AllowRemainingWords bool
 }
 
 //
@@ -753,7 +758,12 @@ func (vm *Machine) setStop(stmt *gcode.Block) {
 func (vm *Machine) postCheck(stmt *gcode.Block) {
 	for _, w := range stmt.Nodes {
 		if _, ok := w.(*gcode.Word); ok {
-			panic(fmt.Sprintf("Unsupported commands left in block: %s", stmt.Export(-1)))
+			s := fmt.Sprintf("Unsupported commands left in block: %s", stmt.Export(-1))
+			if vm.AllowRemainingWords {
+				log.Printf("WARNING: %s", s)
+			} else {
+				panic(s)
+			}
 		}
 	}
 }

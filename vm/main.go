@@ -199,13 +199,16 @@ func propagate(err error) {
 }
 
 func (vm *Machine) lineNumber(stmt *gcode.Block) {
-	if stmt.Length() > 0 {
-		if w, ok := stmt.Nodes[0].(*gcode.Word); ok {
-			if w.Address == 'N' {
-				// We just ignore and consume the line number
-				stmt.Remove(w)
-			}
-		}
+	if _, err := stmt.GetWord('N'); err == nil {
+		// We just ignore and consume the line number
+		stmt.RemoveAddress('N')
+	}
+}
+
+func (vm *Machine) programName(stmt *gcode.Block) {
+	if _, err := stmt.GetWord('O'); err == nil {
+		// We just ignore and consume the program name
+		stmt.RemoveAddress('O')
 	}
 }
 
@@ -745,6 +748,7 @@ func (vm *Machine) run(stmt gcode.Block) (err error) {
 	}()
 
 	vm.lineNumber(&stmt)
+	vm.programName(&stmt)
 	vm.feedRateMode(&stmt)
 	vm.feedRate(&stmt)
 	vm.spindleSpeed(&stmt)

@@ -29,7 +29,7 @@ var (
 
 	stats       = kingpin.Flag("stats", "Print gcode metrics").Default("true").Bool()
 	autoStart   = kingpin.Flag("autostart", "Start sending code without asking questions").Bool()
-	ignBlockDel = kingpin.Flag("ignblockdel", "Ignore block deletes").Bool()
+	ignBlockDel = kingpin.Flag("ignblockdel", "Ignore lines starting with block delete").Bool()
 
 	opt             = kingpin.Flag("opt", "Allow optimizations").Default("false").Bool()
 	optBogusMove    = kingpin.Flag("optbogus", "Remove all moves that would be an implicit part of another move (Deprecated for optvector)").Default("false").Bool()

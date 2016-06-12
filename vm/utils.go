@@ -199,9 +199,21 @@ func (vm *Machine) Info() (minx, miny, minz, maxx, maxy, maxz float64, feedrates
 
 // Estimate runtime for job
 func (m *Machine) ETA() time.Duration {
+	lastTool := -1
+	lastToolSuggestion := -1
 	var eta time.Duration
 	var lx, ly, lz float64
 	for _, pos := range m.Positions {
+		if pos.State.ToolIndex != lastTool {
+			if pos.State.ToolIndex == lastToolSuggestion {
+				eta += 5 * time.Second
+			} else {
+				eta += 10 * time.Second
+			}
+		}
+		lastTool = pos.State.ToolIndex
+		lastToolSuggestion = pos.State.NextToolIndex
+
 		feed := pos.State.Feedrate
 		if feed <= 0 {
 			// Just to use something...

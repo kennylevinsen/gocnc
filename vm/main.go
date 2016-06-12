@@ -837,7 +837,7 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 
 // Initialize the VM to sane default values
 func (vm *Machine) Init() {
-	vm.Positions = append(vm.Positions, Position{})
+	vm.Positions = append(vm.Positions, Position{State: NewState()})
 	vm.Imperial = false
 	vm.AbsoluteMove = true
 	vm.AbsoluteArc = false
@@ -866,6 +866,7 @@ func (m *Position) Dump() {
 	case MoveModeCCWArc:
 		fmt.Printf("Counterclockwise arc\n")
 	}
+	fmt.Printf("   Tool: %d, Tool length: %d\n", m.State.ToolIndex, m.State.ToolLengthIndex)
 	fmt.Printf("   Feedrate: %g\n", m.State.Feedrate)
 	fmt.Printf("   Spindle: %t, clockwise: %t, speed: %g\n", m.State.SpindleEnabled, m.State.SpindleClockwise, m.State.SpindleSpeed)
 	fmt.Printf("   Mist coolant: %t, flood coolant: %t\n", m.State.MistCoolant, m.State.FloodCoolant)

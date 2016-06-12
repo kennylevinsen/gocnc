@@ -27,6 +27,7 @@ type CodeGenerator interface {
 	GetPosition() vm.Position
 	SetPosition(vm.Position)
 	ToolChange(int)
+	ToolChangeSuggestion(int)
 	ToolLengthChange(int)
 	Spindle(bool, bool, float64)
 	Coolant(bool, bool)
@@ -43,6 +44,17 @@ type BaseGenerator struct {
 	Position vm.Position
 }
 
+func (s *BaseGenerator) ToolChange(int)                      {}
+func (s *BaseGenerator) ToolChangeSuggestion(int)            {}
+func (s *BaseGenerator) ToolLengthChange(int)                {}
+func (s *BaseGenerator) Spindle(bool, bool, float64)         {}
+func (s *BaseGenerator) Coolant(bool, bool)                  {}
+func (s *BaseGenerator) FeedMode(int)                        {}
+func (s *BaseGenerator) Feedrate(float64)                    {}
+func (s *BaseGenerator) CutterCompensation(int)              {}
+func (s *BaseGenerator) Dwell(float64)                       {}
+func (s *BaseGenerator) Move(float64, float64, float64, int) {}
+
 // Gets the current position for comparisons.
 func (s *BaseGenerator) GetPosition() vm.Position {
 	return s.Position
@@ -51,42 +63,6 @@ func (s *BaseGenerator) GetPosition() vm.Position {
 // Sets the current position.
 func (s *BaseGenerator) SetPosition(pos vm.Position) {
 	s.Position = pos
-}
-
-// Dummy implementation
-func (s *BaseGenerator) ToolChange(int) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) ToolLengthChange(int) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) Spindle(bool, bool, float64) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) Coolant(bool, bool) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) FeedMode(int) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) Feedrate(float64) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) CutterCompensation(int) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) Dwell(float64) {
-}
-
-// Dummy implementation
-func (s *BaseGenerator) Move(float64, float64, float64, int) {
 }
 
 // Initializes the current position.
@@ -108,6 +84,10 @@ func HandlePosition(pos vm.Position, gens ...CodeGenerator) (err error) {
 
 		if ns.ToolIndex != cs.ToolIndex {
 			s.ToolChange(ns.ToolIndex)
+		}
+
+		if ns.NextToolIndex != cs.NextToolIndex {
+			s.ToolChangeSuggestion(ns.NextToolIndex)
 		}
 
 		if ns.ToolLengthIndex != cs.ToolLengthIndex {

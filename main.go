@@ -38,6 +38,7 @@ var (
 	optDrillSpeed   = kingpin.Flag("optdrill", "Use fast positioning for drills to last drilled depth").Default("false").Bool()
 	optFloatingZ    = kingpin.Flag("optfloat", "Remove bogus moves above Z0 (floating Z)").Default("true").Bool()
 	optPathGrouping = kingpin.Flag("optpath", "Optimize path to minimize moves between individual operations").Default("false").Bool()
+	optPrepareTool  = kingpin.Flag("optpreparetool", "Ensures that the next tool is prepared as long in advance as possible").Default("false").Bool()
 
 	precision        = kingpin.Flag("precision", "Precision to use for exported gcode (max mantissa digits)").Default("4").Int()
 	maxArcDeviation  = kingpin.Flag("maxarcdeviation", "Maximum deviation from an ideal arc (mm)").Default("0.002").Float()
@@ -322,6 +323,10 @@ func main() {
 
 		if *optLiftSpeed {
 			optimize.OptLiftSpeed(&machine)
+		}
+
+		if *optPrepareTool {
+			optimize.OptPrepareTool(&machine)
 		}
 	}
 

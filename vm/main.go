@@ -134,6 +134,7 @@ type State struct {
 	FloodCoolant       bool
 	MistCoolant        bool
 	ToolIndex          int
+	NextToolIndex      int
 	ToolLengthIndex    int
 	CutterCompensation int
 	DwellTime          float64
@@ -144,6 +145,7 @@ func NewState() State {
 	return State{
 		FeedMode:           -1,
 		ToolIndex:          -1,
+		NextToolIndex:      -1,
 		ToolLengthIndex:    -1,
 		CutterCompensation: -1,
 	}
@@ -170,7 +172,6 @@ type Machine struct {
 	AbsoluteMove bool
 	AbsoluteArc  bool
 	MovePlane    int
-	NextTool     int
 
 	// Coordinate systems
 	CoordinateSystem CoordinateSystem
@@ -269,7 +270,7 @@ func (vm *Machine) spindleSpeed(stmt *gcode.Block) {
 
 func (vm *Machine) nextTool(stmt *gcode.Block) {
 	if val, err := stmt.GetWord('T'); err == nil {
-		vm.NextTool = int(val)
+		vm.State.NextToolIndex = int(val)
 		stmt.RemoveAddress('T')
 	}
 }
@@ -283,10 +284,10 @@ func (vm *Machine) toolChange(stmt *gcode.Block) {
 
 			switch w.Command {
 			case 6:
-				if vm.NextTool == -1 {
+				if vm.State.NextToolIndex == -1 {
 					panic("Toolchange attempted without a defined tool")
 				}
-				vm.State.ToolIndex = vm.NextTool
+				vm.State.ToolIndex = vm.State.NextToolIndex
 			default:
 				unknownCommand("toolChangeGroup", w)
 			}
@@ -837,6 +838,7 @@ func (vm *Machine) Process(doc *gcode.Document) (err error) {
 
 // Initialize the VM to sane default values
 func (vm *Machine) Init() {
+	vm.State = NewState()
 	vm.Positions = append(vm.Positions, Position{State: NewState()})
 	vm.Imperial = false
 	vm.AbsoluteMove = true
@@ -844,7 +846,6 @@ func (vm *Machine) Init() {
 	vm.MovePlane = PlaneXY
 	vm.MaxArcDeviation = 0.002
 	vm.MinArcLineLength = 0.01
-	vm.NextTool = -1
 	vm.IgnoreBlockDelete = false
 }
 
@@ -866,7 +867,7 @@ func (m *Position) Dump() {
 	case MoveModeCCWArc:
 		fmt.Printf("Counterclockwise arc\n")
 	}
-	fmt.Printf("   Tool: %d, Tool length: %d\n", m.State.ToolIndex, m.State.ToolLengthIndex)
+	fmt.Printf("   Tool: %d, Tool length: %d, Next tool: %d\n", m.State.ToolIndex, m.State.ToolLengthIndex, m.State.NextToolIndex)
 	fmt.Printf("   Feedrate: %g\n", m.State.Feedrate)
 	fmt.Printf("   Spindle: %t, clockwise: %t, speed: %g\n", m.State.SpindleEnabled, m.State.SpindleClockwise, m.State.SpindleSpeed)
 	fmt.Printf("   Mist coolant: %t, flood coolant: %t\n", m.State.MistCoolant, m.State.FloodCoolant)

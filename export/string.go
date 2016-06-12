@@ -17,6 +17,7 @@ type StringCodeGenerator struct {
 	BaseGenerator
 	Precision      int
 	Lines          []string
+	Tool           int
 	ForceModeWrite bool
 }
 
@@ -37,8 +38,26 @@ func (s *StringCodeGenerator) Retrieve() string {
 
 // Adds a toolchange operation (M6 Tn).
 func (s *StringCodeGenerator) ToolChange(t int) {
-	s.put(fmt.Sprintf("M6 T%d", t))
+	if s.Tool == t {
+		if s.Lines[len(s.Lines)-1] == fmt.Sprintf("T%d", t) {
+			s.Lines[len(s.Lines)-1] = fmt.Sprintf("M6 T%d", t)
+		} else {
+			s.put("M6")
+		}
+	} else {
+		s.put(fmt.Sprintf("M6 T%d", t))
+		s.Tool = t
+	}
 	s.ForceModeWrite = true
+}
+
+// Adds a toolchange suggest operation (Tn).
+func (s *StringCodeGenerator) ToolChangeSuggestion(t int) {
+	if s.Tool != t {
+		s.put(fmt.Sprintf("T%d", t))
+		s.Tool = t
+		s.ForceModeWrite = true
+	}
 }
 
 // Adds a tool length index operation (G43 Hn or G49)

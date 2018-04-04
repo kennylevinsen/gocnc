@@ -2,7 +2,7 @@ package streaming
 
 import "io"
 import "bufio"
-import "github.com/joushou/goserial"
+import "github.com/tarm/goserial"
 import "github.com/joushou/gocnc/vm"
 import "github.com/joushou/gocnc/export"
 import "errors"

@@ -1,6 +1,6 @@
 package vm
 
-import "github.com/joushou/gocnc/gcode"
+import "github.com/kennylevinsen/gocnc/gcode"
 import "math"
 import "fmt"
 

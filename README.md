@@ -1,4 +1,4 @@
-gocnc [![Go Report Card](https://goreportcard.com/badge/github.com/joushou/gocnc)](https://goreportcard.com/report/github.com/joushou/gocnc)
+gocnc [![Go Report Card](https://goreportcard.com/badge/github.com/kennylevinsen/gocnc)](https://goreportcard.com/report/github.com/kennylevinsen/gocnc)
 =====
 
 A command-line GCode sender and optimizer for CNC routers
@@ -20,17 +20,17 @@ Usage
 Installation
 ----
 
-      go get github.com/joushou/gocnc
+      go get github.com/kennylevinsen/gocnc
 
 Update
 ----
 
-      go get -u github.com/joushou/gocnc
+      go get -u github.com/kennylevinsen/gocnc
 
 Build
 ----
 
-In the gocnc directory ($GOPATH/src/github.com/joushou/gocnc)
+In the gocnc directory ($GOPATH/src/github.com/kennylevinsen/gocnc)
 
       go build
 

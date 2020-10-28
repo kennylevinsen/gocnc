@@ -3,9 +3,9 @@ package vm
 import (
 	"log"
 
-	"github.com/joushou/gocnc/gcode"
+	"github.com/kennylevinsen/gocnc/gcode"
 )
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vector"
 import "fmt"
 import "errors"
 

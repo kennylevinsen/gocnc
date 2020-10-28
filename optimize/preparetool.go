@@ -1,6 +1,6 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vm"
 
 func OptPrepareTool(machine *vm.Machine) {
 	lastTool := -1

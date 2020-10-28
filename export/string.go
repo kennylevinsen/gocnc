@@ -1,6 +1,6 @@
 package export
 
-import "github.com/joushou/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vm"
 import "fmt"
 import "strings"
 

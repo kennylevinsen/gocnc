@@ -1,10 +1,10 @@
 package main
 
-import "github.com/joushou/gocnc/gcode"
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/optimize"
-import "github.com/joushou/gocnc/export"
-import "github.com/joushou/gocnc/streaming"
+import "github.com/kennylevinsen/gocnc/gcode"
+import "github.com/kennylevinsen/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/optimize"
+import "github.com/kennylevinsen/gocnc/export"
+import "github.com/kennylevinsen/gocnc/streaming"
 import "github.com/cheggaaa/pb"
 import "github.com/alecthomas/kingpin"
 

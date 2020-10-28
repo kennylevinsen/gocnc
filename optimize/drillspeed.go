@@ -1,7 +1,7 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vector"
 
 // OptDrillSpeed detects a previous drill, and uses rapid move or higher
 // feedrate to the previous known depth. Scans through all Z-descent moves,

@@ -1,7 +1,7 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vector"
 
 import "errors"
 import "fmt"

@@ -1,7 +1,7 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vector"
 
 // Uses rapid move for all Z-up only moves.
 // Scans all positions for moves that only change the z-axis in a positive direction,

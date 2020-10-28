@@ -1,6 +1,6 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vm"
 
 // OptFloatingZ eliminates any bogus moves above minDistOverZ, and makes the remaining move
 // rapid.

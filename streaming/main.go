@@ -1,6 +1,6 @@
 package streaming
 
-import "github.com/joushou/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vm"
 
 type Streamer interface {
 	Check(*vm.Machine) error

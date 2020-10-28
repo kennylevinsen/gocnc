@@ -1,6 +1,6 @@
 package vm
 
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vector"
 
 type CoordinateSystem struct {
 	coordinateSystems       []vector.Vector

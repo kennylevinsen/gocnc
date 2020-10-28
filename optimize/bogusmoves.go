@@ -1,7 +1,7 @@
 package optimize
 
-import "github.com/joushou/gocnc/vm"
-import "github.com/joushou/gocnc/vector"
+import "github.com/kennylevinsen/gocnc/vm"
+import "github.com/kennylevinsen/gocnc/vector"
 
 // Kills redundant partial moves.
 // Calculates the unit-vector, and kills all incremental moves between A and B.
